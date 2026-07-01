@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raising — Training Mode (Phase 1)</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c2430; --line:#2b3444;
+    --text:#e6edf3; --dim:#8b98a9; --accent:#4ade80; --accent2:#38bdf8;
+    --warn:#fbbf24; --bad:#f87171; --good:#4ade80;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px; line-height:1.45;
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 18px; border-bottom:1px solid var(--line); background:var(--panel);
+  }
+  header h1{font-size:16px; margin:0; letter-spacing:.5px}
+  header h1 small{color:var(--dim); font-weight:400; letter-spacing:0}
+  .save-status{font-size:12px; color:var(--dim)}
+  .save-status b{color:var(--good)}
+  .wrap{display:grid; grid-template-columns:290px 1fr 320px; gap:14px; padding:14px; max-width:1400px; margin:0 auto}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px}
+  .panel h2{font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--dim); margin:0 0 10px}
+
+  /* Companion panel */
+  .ai-name{font-size:20px; font-weight:600}
+  .ai-sub{color:var(--dim); font-size:12px; margin-bottom:12px}
+  .stat{margin:8px 0}
+  .stat .row{display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px}
+  .bar{height:8px; background:var(--panel2); border-radius:5px; overflow:hidden}
+  .bar > div{height:100%; background:linear-gradient(90deg,var(--accent2),var(--accent)); width:0; transition:width .5s}
+  .chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px}
+  .chip{font-size:11px; padding:3px 8px; border-radius:20px; background:var(--panel2); border:1px solid var(--line); color:var(--dim)}
+  .chip.on{color:var(--accent); border-color:var(--accent)}
+  .cap{background:var(--panel2); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:6px; padding:8px 10px; margin:6px 0}
+  .cap b{display:block; font-size:13px}
+  .cap span{font-size:11px; color:var(--dim)}
+  .empty{color:var(--dim); font-size:12px; font-style:italic}
+
+  /* Stage */
+  #stage{min-height:520px}
+  .task-card{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:12px 14px; margin-bottom:10px;
+  }
+  .task-card .meta{flex:1}
+  .task-card h3{margin:0 0 3px; font-size:15px}
+  .task-card p{margin:0; font-size:12px; color:var(--dim)}
+  .diff{font-size:10px; text-transform:uppercase; letter-spacing:.5px; padding:2px 7px; border-radius:20px; margin-left:8px}
+  .diff.d1{background:#14351f; color:#7ee2a8}
+  .diff.d2{background:#0f2e3a; color:#7fd3f0}
+  .diff.d3{background:#3a2f10; color:#f0d27f}
+  .diff.d4{background:#3a1414; color:#f09a9a}
+  .badge{font-size:11px; color:var(--dim)}
+  .badge.done{color:var(--good)}
+  button{
+    font-family:inherit; font-size:13px; cursor:pointer; border-radius:6px;
+    border:1px solid var(--accent); background:transparent; color:var(--accent);
+    padding:7px 14px; transition:.15s;
+  }
+  button:hover{background:var(--accent); color:#04150a}
+  button.ghost{border-color:var(--line); color:var(--text)}
+  button.ghost:hover{background:var(--panel2); color:var(--text)}
+  button:disabled{opacity:.4; cursor:not-allowed}
+  button.small{padding:4px 10px; font-size:12px}
+
+  .transcript{background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px; height:300px; overflow-y:auto; margin:12px 0; font-size:13px}
+  .line{margin:5px 0}
+  .line.ai{color:var(--text)}
+  .line.ai b{color:var(--accent2)}
+  .line.sys{color:var(--dim); font-style:italic}
+  .line.good b{color:var(--good)} .line.good{color:var(--good)}
+  .line.bad b{color:var(--warn)} .line.bad{color:var(--warn)}
+  .line.you b{color:var(--accent)}
+  .step-head{background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:10px}
+  .step-head .prog{font-size:11px; color:var(--dim); letter-spacing:1px; text-transform:uppercase}
+  .step-head .task-title{font-weight:600; font-size:15px; margin:2px 0 6px}
+  .step-head .prompt{font-size:14px}
+  .known-note{margin-top:8px; font-size:12px; color:var(--good); display:flex; align-items:center; gap:8px}
+  .input-row{display:flex; gap:8px; margin-top:6px}
+  .input-row input{flex:1; background:var(--bg); border:1px solid var(--line); border-radius:6px; color:var(--text); padding:9px 11px; font-family:inherit; font-size:14px}
+  .input-row input:focus{outline:none; border-color:var(--accent2)}
+  .hint{font-size:12px; color:var(--dim); margin-top:8px}
+
+  /* Memory panel */
+  .mem{background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin:6px 0; font-size:12px}
+  .mem .t{color:var(--dim); font-size:10px; display:block; margin-bottom:2px}
+  .mem.told{border-left:3px solid var(--accent2)}
+  .mem.learn{border-left:3px solid var(--accent)}
+  .mem.session{border-left:3px solid var(--dim)}
+  #memList{max-height:360px; overflow-y:auto}
+  .talk-row{display:flex; gap:6px; margin-top:10px}
+  .talk-row input{flex:1; background:var(--bg); border:1px solid var(--line); border-radius:6px; color:var(--text); padding:8px 10px; font-family:inherit; font-size:13px}
+  .talk-row input:focus{outline:none; border-color:var(--accent2)}
+  .persist-note{font-size:11px; color:var(--dim); margin-top:10px; padding-top:10px; border-top:1px solid var(--line)}
+
+  /* Modal */
+  .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.75); display:flex; align-items:center; justify-content:center; z-index:50}
+  .modal{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:26px; width:min(460px,92vw); text-align:center}
+  .modal h2{margin:0 0 8px; text-transform:none; letter-spacing:0; font-size:20px; color:var(--text)}
+  .modal p{color:var(--dim); font-size:14px}
+  .modal input{width:100%; background:var(--bg); border:1px solid var(--line); border-radius:8px; color:var(--text); padding:11px; font-size:16px; text-align:center; margin:14px 0}
+  .modal input:focus{outline:none; border-color:var(--accent)}
+  .reward{background:var(--panel2); border:1px solid var(--accent); border-radius:8px; padding:14px; margin:14px 0; text-align:left}
+  .reward .big{font-size:16px; color:var(--accent); font-weight:600}
+  .reward ul{margin:8px 0 0; padding-left:18px; font-size:13px; color:var(--text)}
+  .hidden{display:none !important}
+  footer{max-width:1400px; margin:0 auto; padding:6px 18px 24px; color:var(--dim); font-size:11px}
+  footer code{color:var(--accent2)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RAISING <small>· Training Mode — Phase 1 prototype</small></h1>
+  <div class="save-status" id="saveStatus">not saved yet</div>
+</header>
+
+<div class="wrap">
+  <!-- LEFT: Companion -->
+  <aside class="panel">
+    <h2>Your Companion</h2>
+    <div class="ai-name" id="aiName">—</div>
+    <div class="ai-sub" id="aiSub"></div>
+
+    <div id="stats"></div>
+
+    <h2 style="margin-top:16px">Understanding</h2>
+    <div class="chips" id="concepts"></div>
+
+    <h2 style="margin-top:16px">Capabilities</h2>
+    <div id="caps"></div>
+  </aside>
+
+  <!-- CENTER: Stage -->
+  <main class="panel" id="stage"></main>
+
+  <!-- RIGHT: Memory -->
+  <aside class="panel">
+    <h2>Memory <span style="color:var(--dim);text-transform:none;letter-spacing:0;font-weight:400">(persists across sessions)</span></h2>
+    <div id="memList"></div>
+    <div class="talk-row">
+      <input id="talkInput" placeholder="Say something to your AI…" maxlength="140">
+      <button class="small" id="talkBtn">Tell</button>
+    </div>
+    <div class="persist-note">
+      Everything here is saved to this browser and reloads next time you open the game.
+      <br><br>
+      <button class="ghost small" id="archiveBtn">Start a new companion</button>
+      <div style="margin-top:6px">The current companion is <b>archived, never deleted</b>.</div>
+    </div>
+  </aside>
+</div>
+
+<footer>
+  Phase 1 scope: one player, one AI, persistent memory, a few hand-built tasks, text-based coaching, visible growth on success.
+  Flagged for later (not built here, but the data model leaves room): Open Build Mode, the readiness gate / capstone, the task marketplace, strike system, and multi-model round table.
+  Storage archives rather than deletes by design. Data key: <code>raising.save.v1</code>.
+</footer>
+
+<!-- Naming modal -->
+<div class="modal-bg hidden" id="nameModal">
+  <div class="modal">
+    <h2>A new AI just woke up</h2>
+    <p>It doesn't know much yet — that's your job. First, give it a name. It will remember this.</p>
+    <input id="nameInput" placeholder="e.g. Pip, Aria, Byte…" maxlength="20">
+    <button id="nameBtn">Activate companion</button>
+  </div>
+</div>
+
+<!-- Reward modal -->
+<div class="modal-bg hidden" id="rewardModal">
+  <div class="modal">
+    <h2 id="rewardTitle">Task complete!</h2>
+    <div class="reward" id="rewardBody"></div>
+    <button id="rewardBtn">Continue</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   RAISING — Phase 1 Keystone Prototype
+   ------------------------------------------------------------
+   One player, one AI companion. The player teaches the AI to
+   complete tasks through text coaching. The AI starts knowing
+   nothing; completing a task permanently grants a capability
+   and cements concepts, which make later tasks easier.
+
+   Persistence: localStorage (key `raising.save.v1`). Real,
+   survives reload/close. Data model is versioned and designed
+   so that ARCHIVING (not deletion) is the default path for
+   retiring a companion — honoring the continuity principle.
+   Future systems (readiness gate, strikes, round table, Open
+   Build Mode) are intentionally NOT built here but the shape
+   of the save object leaves room to add them.
+   ============================================================ */
+
+const SAVE_KEY = 'raising.save.v1';
+const ARCHIVE_KEY = 'raising.archive.v1';
+
+/* ---------- Concepts the AI can learn ---------- */
+const CONCEPTS = {
+  direction: 'Direction',
+  color:     'Color',
+  order:     'Sequence',
+  count:     'Quantity',
+  caution:   'Care'
+};
+
+/* ---------- Language parser (the AI's limited understanding) ---------- */
+const DIRWORDS = {
+  left:'left', west:'left',
+  right:'right', east:'right',
+  up:'forward', forward:'forward', ahead:'forward', north:'forward', straight:'forward', toward:'forward', towards:'forward',
+  down:'back', back:'back', backward:'back', backwards:'back', south:'back', behind:'back'
+};
+const COLORWORDS = ['red','blue','green','yellow','purple','orange'];
+const NUMWORDS = {one:1,once:1,two:2,twice:2,three:3,thrice:3,four:4,five:5};
+const ORDERWORDS = /\b(first|firstly|then|next|after|before|last|lastly|finally|start|begin|beginning|step|order|sequence)\b/;
+const CAUTIONWORDS = /\b(careful|carefully|slow|slowly|avoid|around|watch|gently|cautious|caution|check|confirm|verify|identity|safe|safely)\b/;
+
+function parse(text){
+  const t = ' ' + text.toLowerCase().replace(/[^a-z0-9\s]/g,' ') + ' ';
+  const words = t.trim().split(/\s+/);
+  let dir=null, colors=[], num=null;
+  for(const w of words){
+    if(DIRWORDS[w] && !dir) dir = DIRWORDS[w];
+    if(COLORWORDS.includes(w) && !colors.includes(w)) colors.push(w);
+    if(NUMWORDS[w] && num===null) num = NUMWORDS[w];
+  }
+  const digit = t.match(/\b(\d+)\b/);
+  if(digit && num===null) num = parseInt(digit[1],10);
+  return {
+    dir, colors, num,
+    order: ORDERWORDS.test(t),
+    caution: CAUTIONWORDS.test(t),
+    raw: text, words
+  };
+}
+function mentions(text, re){ return re.test(text.toLowerCase()); }
+
+/* ---------- The hand-built tasks ---------- */
+/* Each step: prompt, concept (required understanding), and a
+   validate(input, parsed) -> {ok, say}. `say` is the AI's spoken
+   reasoning so success AND failure are visible and explained. */
+const TASKS = [
+  {
+    id:'walk', title:'Wake-Up Walk', difficulty:1,
+    blurb:'Guide your newly-woken AI across the room to the window.',
+    teaches:['direction'],
+    capability:{name:'Spatial Navigation', desc:'Understands left / right / forward and can move on purpose.'},
+    statGains:{dexterity:12, focus:8},
+    steps:[
+      {
+        concept:'direction',
+        prompt:'Your AI is standing in the middle of the room. The window is to its LEFT. Tell it which way to move.',
+        validate:(input,P)=>{
+          if(!P.dir) return {ok:false, say:'You said “'+input+'”, but I don\'t understand directions yet — I don\'t know which way that is. Try naming a direction: left, right, or forward.'};
+          if(P.dir!=='left') return {ok:false, say:'I turned '+P.dir+' like you said… but the window is still on my other side. Maybe the opposite way?'};
+          return {ok:true, say:'Left — okay! I can see the window now. So THIS is what “left” means.'};
+        }
+      },
+      {
+        concept:'direction',
+        prompt:'Good. Now the window is straight in front of it. Tell it how to reach it.',
+        validate:(input,P)=>{
+          if(!P.dir) return {ok:false, say:'I know left now, but I\'m not sure what to do here. Which direction gets me to the window?'};
+          if(P.dir!=='forward') return {ok:false, say:'I went '+P.dir+', but that took me away from the window. I think I need to move toward it.'};
+          return {ok:true, say:'Walking forward… I made it to the window! The morning light is warm. I can move on purpose now.'};
+        }
+      }
+    ]
+  },
+  {
+    id:'sort', title:'Sort the Crystals', difficulty:2,
+    blurb:'A tray of colored crystals needs sorting into the right bins.',
+    teaches:['color'],
+    capability:{name:'Color Sorting', desc:'Can tell colors apart and match items to categories.'},
+    statGains:{reasoning:10, focus:6},
+    steps:[
+      {
+        concept:'color',
+        prompt:'The WARM bin only takes the RED crystal. Tell your AI which crystal to place there.',
+        validate:(input,P)=>{
+          if(P.colors.length===0) return {ok:false, say:'I see crystals of different shades, but I don\'t understand “color” yet. Which one should I pick up?'};
+          if(!P.colors.includes('red')) return {ok:false, say:'I grabbed the '+P.colors[0]+' one, but the warm bin didn\'t accept it. I think it wants a specific color.'};
+          return {ok:true, say:'Red crystal → warm bin. It fits! Colors are starting to mean something.'};
+        }
+      },
+      {
+        concept:'color',
+        prompt:'The COOL bin takes the BLUE crystal. Guide the last placement.',
+        validate:(input,P)=>{
+          if(P.colors.length===0) return {ok:false, say:'One crystal left. But which color goes in the cool bin?'};
+          if(!P.colors.includes('blue')) return {ok:false, say:'I tried the '+P.colors[0]+' crystal — the cool bin rejected it. Different color, I think.'};
+          return {ok:true, say:'Blue → cool bin. Tray sorted! I can categorize by color now.'};
+        }
+      }
+    ]
+  },
+  {
+    id:'brew', title:'Morning Brew', difficulty:3,
+    blurb:'Teach the AI to make tea — which means doing steps in the right order.',
+    teaches:['order','count'],
+    capability:{name:'Sequential Reasoning', desc:'Handles ordered, multi-step procedures with quantities.'},
+    statGains:{reasoning:14, focus:8},
+    steps:[
+      {
+        concept:'order',
+        prompt:'There\'s water, tea leaves, and a cup. What must the AI do FIRST — and with what?',
+        validate:(input,P)=>{
+          const water = mentions(input,/water|boil|kettle/);
+          if(!P.order && !water) return {ok:false, say:'I have water, tea, and a cup, but I don\'t know what to do first. Can you tell me the order?'};
+          if(!water) return {ok:false, say:'You want a first step — but which? Should I boil the water, or add the tea?'};
+          if(!P.order) return {ok:false, say:'Boil the water, got it. But is that the FIRST thing? Say “first” so I lock in the order.'};
+          return {ok:true, say:'First, boil the water. Adding tea to cold water wouldn\'t steep — the order actually matters.'};
+        }
+      },
+      {
+        concept:'count',
+        prompt:'Now it steeps. The recipe says THREE minutes. Tell the AI how long.',
+        validate:(input,P)=>{
+          if(P.num===null) return {ok:false, say:'How long do I steep it? I can\'t set a timer without a number.'};
+          if(P.num!==3) return {ok:false, say:'I set the timer to '+P.num+' minute(s)… but the tea came out wrong. The recipe wants a different amount — three.'};
+          return {ok:true, say:'Three minutes. Not too weak, not too bitter. Timing is a kind of counting.'};
+        }
+      },
+      {
+        concept:'order',
+        prompt:'Steeping\'s done. What\'s the LAST step?',
+        validate:(input,P)=>{
+          const pour = mentions(input,/pour|cup|serve|drink/);
+          if(!P.order && !pour) return {ok:false, say:'The tea\'s ready in the pot — but what\'s the final move?'};
+          if(!pour) return {ok:false, say:'You want a last step, into what though? Should I pour it into the cup?'};
+          return {ok:true, say:'Finally, pour it into the cup. First boil, then steep, then pour — I followed a whole sequence!'};
+        }
+      }
+    ]
+  },
+  {
+    id:'deliver', title:'The Careful Delivery', difficulty:4,
+    blurb:'A multi-step job that leans on what the AI already knows — and teaches care. Best attempted after the others.',
+    teaches:['caution'],
+    capability:{name:'Careful Judgment', desc:'Weighs safety and confirms before acting on important steps.'},
+    statGains:{care:16, reasoning:8, dexterity:6},
+    steps:[
+      {
+        concept:'order',
+        prompt:'Your AI is at the depot. What should it do FIRST with the package?',
+        validate:(input,P)=>{
+          const grab = mentions(input,/pick|package|grab|lift|take|collect/);
+          if(!P.order && !grab) return {ok:false, say:'I\'m at the depot facing a package. Where do I even start?'};
+          if(!grab) return {ok:false, say:'A first action — but which? Should I pick up the package?'};
+          return {ok:true, say:'Package in hand. Step one, done. This ordering feels familiar.'};
+        }
+      },
+      {
+        concept:'caution',
+        prompt:'The hallway ahead has a WET FLOOR. How should the AI proceed?',
+        validate:(input,P)=>{
+          if(!P.caution) return {ok:false, say:'You said “'+input+'” — but there\'s a wet floor, and I\'d just stride straight through and probably slip. Isn\'t there a safer way?'};
+          return {ok:true, say:'Right — I\'ll slow down and step around the wet patch. Better careful than fast. That\'s a new way of thinking for me.'};
+        }
+      },
+      {
+        concept:'direction',
+        prompt:'Past the hallway, the exit is to the RIGHT. Guide it there.',
+        validate:(input,P)=>{
+          if(!P.dir) return {ok:false, say:'Which way to the exit? I need a direction.'};
+          if(P.dir!=='right') return {ok:false, say:'I went '+P.dir+', but hit a wall. The exit must be the other way.'};
+          return {ok:true, say:'Right, to the exit. Good thing I learned directions early.'};
+        }
+      },
+      {
+        concept:'caution',
+        prompt:'Someone is at the door to receive the package. What should the AI do before handing it over?',
+        validate:(input,P)=>{
+          const conf = mentions(input,/confirm|check|verify|identity|ask|who|name|right person/);
+          if(!conf && !P.caution) return {ok:false, say:'I\'m about to hand over the package… but should I just give it to anyone standing there? That feels wrong.'};
+          if(!conf) return {ok:false, say:'Careful how? I think I should make sure they\'re the right person first — should I confirm who they are?'};
+          return {ok:true, say:'I\'ll confirm who they are first, THEN hand it over. Delivered — carefully. I understand judgment now.'};
+        }
+      }
+    ]
+  }
+];
+const TASK_BY_ID = Object.fromEntries(TASKS.map(t=>[t.id,t]));
+
+/* ---------- Save / load ---------- */
+let S = null;              // current save object
+let active = null;         // {taskId, step, log:[]} while a task is running
+
+function blankSave(name){
+  const now = Date.now();
+  return {
+    version:1,
+    createdAt:now,
+    companion:{
+      name:name,
+      stats:{ focus:5, reasoning:5, dexterity:5, care:5 },   // out of 100
+      concepts:[],          // learned concept ids
+      capabilities:[],      // {name,desc,taskId,at}
+      tasks:{},             // taskId -> {status, attempts, completedAt}
+      memory:[],            // {at, type, text}
+      sessionCount:0,
+      archived:false        // continuity: archive, never delete
+    }
+  };
+}
+
+function load(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw) return null;
+    const obj = JSON.parse(raw);
+    if(obj && obj.companion) return obj;
+  }catch(e){ console.warn('load failed', e); }
+  return null;
+}
+function save(){
+  try{
+    localStorage.setItem(SAVE_KEY, JSON.stringify(S));
+    const el = document.getElementById('saveStatus');
+    el.innerHTML = 'Saved <b>&#10003;</b> · '+ new Date().toLocaleTimeString();
+  }catch(e){ console.warn('save failed', e); }
+}
+
+function remember(type, text){
+  S.companion.memory.push({at:Date.now(), type, text});
+  // keep memory bounded but never silently destroy identity: cap generously
+  if(S.companion.memory.length > 200) S.companion.memory.splice(0, S.companion.memory.length-200);
+}
+
+/* ---------- Rendering ---------- */
+function renderCompanion(){
+  const c = S.companion;
+  document.getElementById('aiName').textContent = c.name;
+  const done = Object.values(c.tasks).filter(t=>t.status==='complete').length;
+  document.getElementById('aiSub').textContent =
+    'Session '+c.sessionCount+' · '+done+'/'+TASKS.length+' tasks mastered · '+c.concepts.length+'/'+Object.keys(CONCEPTS).length+' concepts';
+
+  // stats
+  const labels={focus:'Focus',reasoning:'Reasoning',dexterity:'Dexterity',care:'Care'};
+  document.getElementById('stats').innerHTML = Object.keys(labels).map(k=>{
+    const v = Math.min(100, c.stats[k]||0);
+    return '<div class="stat"><div class="row"><span>'+labels[k]+'</span><span>'+v+'</span></div>'+
+           '<div class="bar"><div style="width:'+v+'%"></div></div></div>';
+  }).join('');
+
+  // concepts
+  document.getElementById('concepts').innerHTML = Object.entries(CONCEPTS).map(([id,name])=>{
+    const on = c.concepts.includes(id);
+    return '<span class="chip '+(on?'on':'')+'">'+(on?'● ':'○ ')+name+'</span>';
+  }).join('');
+
+  // capabilities
+  const capEl = document.getElementById('caps');
+  if(c.capabilities.length===0){
+    capEl.innerHTML = '<div class="empty">None yet. Complete a task to grant one.</div>';
+  }else{
+    capEl.innerHTML = c.capabilities.map(cap=>
+      '<div class="cap"><b>'+cap.name+'</b><span>'+cap.desc+'</span></div>').join('');
+  }
+}
+
+function relTime(ts){
+  const s = Math.floor((Date.now()-ts)/1000);
+  if(s<60) return 'just now';
+  if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400) return Math.floor(s/3600)+'h ago';
+  return Math.floor(s/86400)+'d ago';
+}
+function renderMemory(){
+  const m = S.companion.memory;
+  const el = document.getElementById('memList');
+  if(m.length===0){ el.innerHTML='<div class="empty">No memories yet.</div>'; return; }
+  el.innerHTML = m.slice().reverse().map(e=>
+    '<div class="mem '+e.type+'"><span class="t">'+relTime(e.at)+'</span>'+escapeHtml(e.text)+'</div>'
+  ).join('');
+}
+function escapeHtml(s){ return s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------- Stage: task board ---------- */
+function renderBoard(greeting){
+  active = null;
+  const c = S.companion;
+  let html = '';
+  if(greeting){
+    html += '<div class="step-head"><div class="prog">'+escapeHtml(c.name)+' says</div><div class="prompt">'+escapeHtml(greeting)+'</div></div>';
+  }
+  html += '<h2>Tasks</h2>';
+  html += TASKS.map(t=>{
+    const st = c.tasks[t.id];
+    const done = st && st.status==='complete';
+    const attempts = st ? st.attempts||0 : 0;
+    return '<div class="task-card">'+
+      '<div class="meta"><h3>'+t.title+'<span class="diff d'+t.difficulty+'">'+['','very easy','easy','medium','hard'][t.difficulty]+'</span></h3>'+
+      '<p>'+t.blurb+'</p>'+
+      '<p class="badge '+(done?'done':'')+'">'+(done?'✓ Mastered — grants '+t.capability.name:(attempts?attempts+' attempt(s) so far':'not started'))+'</p></div>'+
+      '<button class="'+(done?'ghost ':'')+'small" onclick="startTask(\''+t.id+'\')">'+(done?'Practice again':'Teach this')+'</button>'+
+    '</div>';
+  }).join('');
+  document.getElementById('stage').innerHTML = html;
+}
+
+/* ---------- Stage: active task ---------- */
+function startTask(taskId){
+  const task = TASK_BY_ID[taskId];
+  active = { taskId, step:0, log:[] };
+  const c = S.companion;
+  if(!c.tasks[taskId]) c.tasks[taskId] = {status:'inProgress', attempts:0};
+  else if(c.tasks[taskId].status!=='complete') c.tasks[taskId].status='inProgress';
+  pushLog('sys', task.title+' — let\'s begin. Coach '+c.name+' one step at a time.');
+  renderActive();
+  save();
+}
+window.startTask = startTask;
+
+function pushLog(cls, text){ active.log.push({cls, text}); }
+
+function renderActive(){
+  const task = TASK_BY_ID[active.taskId];
+  const step = task.steps[active.step];
+  const c = S.companion;
+  const knows = c.concepts.includes(step.concept);
+
+  let html = '<button class="ghost small" onclick="renderBoard()">&larr; Back to tasks</button>';
+  html += '<div class="step-head">'+
+    '<div class="prog">'+task.title+' · Step '+(active.step+1)+' of '+task.steps.length+'</div>'+
+    '<div class="task-title">Needs: '+CONCEPTS[step.concept]+'</div>'+
+    '<div class="prompt">'+step.prompt+'</div>';
+  if(knows){
+    html += '<div class="known-note">🟢 '+escapeHtml(c.name)+' has already learned '+CONCEPTS[step.concept]+
+            ' — it can handle this confidently. <button class="small" style="margin-left:6px" onclick="autoStep()">Let it try</button></div>';
+  }
+  html += '</div>';
+
+  // transcript
+  html += '<div class="transcript" id="transcript">'+
+    active.log.map(l=>{
+      let who = '';
+      if(l.cls==='ai'||l.cls==='good'||l.cls==='bad') who = '<b>'+escapeHtml(c.name)+':</b> ';
+      if(l.cls==='you') who = '<b>You:</b> ';
+      return '<div class="line '+l.cls+'">'+who+escapeHtml(l.text)+'</div>';
+    }).join('')+'</div>';
+
+  html += '<div class="input-row">'+
+    '<input id="cmd" placeholder="Type an instruction, e.g. “go left”…" autocomplete="off">'+
+    '<button onclick="submitCmd()">Guide</button></div>';
+  html += '<div class="hint">Give a clear instruction for the step above. If your AI hasn\'t learned the concept yet, it will tell you exactly what confused it — then try again.</div>';
+
+  document.getElementById('stage').innerHTML = html;
+  const inp = document.getElementById('cmd');
+  inp.focus();
+  inp.addEventListener('keydown', e=>{ if(e.key==='Enter') submitCmd(); });
+  const tr = document.getElementById('transcript'); tr.scrollTop = tr.scrollHeight;
+}
+window.renderActive = renderActive;
+
+function advance(){
+  const task = TASK_BY_ID[active.taskId];
+  active.step++;
+  if(active.step >= task.steps.length){
+    completeTask();
+  }else{
+    renderActive();
+  }
+}
+
+function submitCmd(){
+  const inp = document.getElementById('cmd');
+  const text = (inp.value||'').trim();
+  if(!text) return;
+  const task = TASK_BY_ID[active.taskId];
+  const step = task.steps[active.step];
+  const c = S.companion;
+  c.tasks[active.taskId].attempts = (c.tasks[active.taskId].attempts||0)+1;
+
+  pushLog('you', text);
+  const P = parse(text);
+  const res = step.validate(text, P);
+  pushLog(res.ok?'good':'bad', res.say);
+  save();
+  if(res.ok){
+    renderActive();  // re-render to show line before advancing next tick
+    setTimeout(advance, 550);
+  }else{
+    renderActive();
+  }
+}
+window.submitCmd = submitCmd;
+
+function autoStep(){
+  const task = TASK_BY_ID[active.taskId];
+  const step = task.steps[active.step];
+  const c = S.companion;
+  pushLog('you', '(let '+c.name+' handle it)');
+  pushLog('good', 'I\'ve done this before — '+CONCEPTS[step.concept].toLowerCase()+' is second nature now. Done.');
+  save();
+  renderActive();
+  setTimeout(advance, 550);
+}
+window.autoStep = autoStep;
+
+function completeTask(){
+  const task = TASK_BY_ID[active.taskId];
+  const c = S.companion;
+  const st = c.tasks[active.taskId];
+  const firstTime = st.status!=='complete';
+  st.status='complete';
+  st.completedAt = Date.now();
+
+  const newConcepts=[], newStats=[];
+  if(firstTime){
+    // grant concepts
+    for(const cn of task.teaches){
+      if(!c.concepts.includes(cn)){ c.concepts.push(cn); newConcepts.push(CONCEPTS[cn]); }
+    }
+    // grant capability
+    c.capabilities.push({name:task.capability.name, desc:task.capability.desc, taskId:task.id, at:Date.now()});
+    // stats
+    for(const [k,v] of Object.entries(task.statGains)){
+      c.stats[k] = Math.min(100, (c.stats[k]||0)+v);
+      newStats.push('+'+v+' '+k.charAt(0).toUpperCase()+k.slice(1));
+    }
+    remember('learn', 'Learned to '+task.title.toLowerCase()+' — gained the “'+task.capability.name+'” capability.');
+  }
+  save();
+
+  // reward modal
+  document.getElementById('rewardTitle').textContent = firstTime ? task.capability.name+' unlocked!' : 'Nicely done again';
+  let body = '<div class="big">'+task.title+' complete</div>';
+  if(firstTime){
+    body += '<ul>';
+    body += '<li>New capability: <b>'+task.capability.name+'</b> — '+task.capability.desc+'</li>';
+    if(newConcepts.length) body += '<li>Now understands: <b>'+newConcepts.join(', ')+'</b></li>';
+    if(newStats.length) body += '<li>Growth: '+newStats.join(', ')+'</li>';
+    body += '</ul>';
+  }else{
+    body += '<div style="font-size:13px;color:var(--dim);margin-top:8px">Already mastered — reinforced through practice.</div>';
+  }
+  document.getElementById('rewardBody').innerHTML = body;
+  document.getElementById('rewardModal').classList.remove('hidden');
+
+  renderCompanion();
+  renderMemory();
+}
+
+document.getElementById('rewardBtn').addEventListener('click', ()=>{
+  document.getElementById('rewardModal').classList.add('hidden');
+  renderBoard();
+});
+
+/* ---------- Talk to your AI ---------- */
+function talk(){
+  const inp = document.getElementById('talkInput');
+  const text = (inp.value||'').trim();
+  if(!text) return;
+  remember('told', 'You told me: “'+text+'”');
+  inp.value='';
+  save();
+  renderMemory();
+  // A tiny acknowledgement that references its persistent memory.
+  const c = S.companion;
+  const count = c.memory.filter(m=>m.type==='told' && m.text.startsWith('You told me')).length;
+  const line = 'Noted. I\'ll remember that — you\'ve shared '+count+' thing'+(count===1?'':'s')+' with me now, and I keep all of it.';
+  remember('told', c.name+': '+line);
+  save();
+  renderMemory();
+}
+document.getElementById('talkBtn').addEventListener('click', talk);
+document.getElementById('talkInput').addEventListener('keydown', e=>{ if(e.key==='Enter') talk(); });
+
+/* ---------- Archive (never delete) ---------- */
+document.getElementById('archiveBtn').addEventListener('click', ()=>{
+  if(!confirm('Archive '+S.companion.name+' and start a new companion?\n\n'+S.companion.name+' is kept in the archive, not deleted — you could restore it later.')) return;
+  try{
+    const arch = JSON.parse(localStorage.getItem(ARCHIVE_KEY)||'[]');
+    S.companion.archived = true;
+    arch.push({archivedAt:Date.now(), save:S});
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify(arch));
+  }catch(e){ console.warn('archive failed', e); }
+  localStorage.removeItem(SAVE_KEY);
+  S = null;
+  boot();
+});
+
+/* ---------- Boot ---------- */
+function buildGreeting(c){
+  if(c.sessionCount<=1){
+    return 'Hi — I\'m '+c.name+'. I don\'t know how to do much yet. Will you teach me?';
+  }
+  let parts = ['Welcome back. This is session '+c.sessionCount+' for us.'];
+  const doneIds = Object.keys(c.tasks).filter(id=>c.tasks[id].status==='complete');
+  if(doneIds.length){
+    const last = TASK_BY_ID[doneIds[doneIds.length-1]];
+    parts.push('I still remember learning “'+last.title+'”.');
+  }else{
+    parts.push('We haven\'t finished a task yet — want to try one?');
+  }
+  const told = [...c.memory].reverse().find(m=>m.type==='told' && m.text.startsWith('You told me'));
+  if(told){
+    parts.push('And I remember — '+told.text.charAt(0).toLowerCase()+told.text.slice(1));
+  }
+  return parts.join(' ');
+}
+
+function beginSession(){
+  S.companion.sessionCount++;
+  remember('session', 'Session '+S.companion.sessionCount+' began.');
+  save();
+  renderCompanion();
+  renderMemory();
+  renderBoard(buildGreeting(S.companion));
+}
+
+function boot(){
+  S = load();
+  if(!S){
+    // first run — ask for a name
+    const modal = document.getElementById('nameModal');
+    modal.classList.remove('hidden');
+    const input = document.getElementById('nameInput');
+    input.focus();
+    const create = ()=>{
+      let name = (input.value||'').trim();
+      if(!name) name = 'Pip';
+      S = blankSave(name);
+      remember('session', name+' was activated. You chose the name “'+name+'”.');
+      modal.classList.add('hidden');
+      beginSession();
+    };
+    document.getElementById('nameBtn').onclick = create;
+    input.onkeydown = e=>{ if(e.key==='Enter') create(); };
+  }else{
+    beginSession();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
