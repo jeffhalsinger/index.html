@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BlockWorld — voxel sandbox + AI helper (Phase 1)</title>
+<style>
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%; overflow:hidden; background:#87b8e8; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  #c{display:block; width:100%; height:100%}
+  #hud{position:fixed; inset:0; pointer-events:none; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  #crosshair{position:absolute; left:50%; top:50%; width:20px; height:20px; transform:translate(-50%,-50%)}
+  #crosshair::before,#crosshair::after{content:""; position:absolute; background:rgba(255,255,255,.85)}
+  #crosshair::before{left:9px; top:2px; width:2px; height:16px}
+  #crosshair::after{top:9px; left:2px; height:2px; width:16px}
+  #topbar{position:absolute; top:10px; left:12px; font-size:13px; background:rgba(0,0,0,.35); padding:8px 12px; border-radius:8px; line-height:1.5}
+  #topbar b{color:#ffe98a}
+  #save{color:#8effa1}
+  #hotbar{position:absolute; bottom:14px; left:50%; transform:translateX(-50%); display:flex; gap:6px}
+  .slot{width:52px; height:52px; border:3px solid rgba(255,255,255,.35); border-radius:8px; background:rgba(0,0,0,.3); display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:10px}
+  .slot .sw{width:26px; height:26px; border-radius:5px; border:1px solid rgba(0,0,0,.3); margin-bottom:3px}
+  .slot.sel{border-color:#fff; background:rgba(255,255,255,.18)}
+  .slot .k{opacity:.7}
+  #helperbar{position:absolute; bottom:80px; left:50%; transform:translateX(-50%); font-size:12px; background:rgba(0,0,0,.35); padding:6px 12px; border-radius:8px}
+  #helperbar b{color:#9fd0ff}
+  #overlay{position:fixed; inset:0; background:rgba(10,20,35,.82); color:#fff; display:flex; align-items:center; justify-content:center; z-index:10; cursor:pointer}
+  #overlay .box{max-width:520px; text-align:center; padding:30px}
+  #overlay h1{font-size:26px; margin-bottom:6px}
+  #overlay p{opacity:.85; margin:10px 0; line-height:1.6; font-size:15px}
+  #overlay .keys{display:inline-block; text-align:left; margin:14px auto 0; font-size:14px; background:rgba(255,255,255,.08); padding:14px 18px; border-radius:10px; line-height:1.9}
+  #overlay kbd{background:#fff; color:#111; border-radius:4px; padding:1px 7px; font-weight:600; font-size:12px}
+  #overlay .go{margin-top:18px; font-size:16px; color:#9effb0; font-weight:600}
+  #note{position:absolute; bottom:14px; right:14px; font-size:11px; opacity:.75; max-width:230px; text-align:right; background:rgba(0,0,0,.3); padding:6px 10px; border-radius:8px; pointer-events:none}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="topbar">
+    <b>BlockWorld</b> · phase 1 sandbox<br>
+    Blocks: <span id="bcount">0</span> · <span id="save">saved</span><br>
+    Helper: <span id="hstate">idle</span>
+  </div>
+  <div id="helperbar">AI helper — <b>F</b> follow · <b>B</b> build pillar where you look · <b>H</b> stop</div>
+  <div id="hotbar"></div>
+  <div id="note">Your world saves to this browser and reloads next time.</div>
+</div>
+
+<div id="overlay">
+  <div class="box">
+    <h1>🧱 BlockWorld</h1>
+    <p>A voxel sandbox with an AI helper that lives in the world with you. First playable slice — walk around, build, and give your helper a job.</p>
+    <div class="keys">
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd> sprint<br>
+      <b>Mouse</b> look &nbsp; <b>Left‑click</b> break &nbsp; <b>Right‑click</b> place<br>
+      <kbd>1</kbd>–<kbd>6</kbd> choose block<br>
+      <kbd>F</kbd> helper follows you &nbsp; <kbd>B</kbd> helper builds a pillar where you look &nbsp; <kbd>H</kbd> helper stops
+    </div>
+    <div class="go">Click to play</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   BlockWorld — Phase 1: walkable voxel sandbox + one AI helper.
+   Single file, Three.js. World persists in localStorage.
+   Next phases (not built yet): training mode (train a low-ability
+   AI on a task list, it builds faster as it completes tasks) and
+   real multiplayer (shared server, helpers work while offline).
+   ============================================================ */
+
+if (typeof THREE === 'undefined') {
+  document.getElementById('overlay').innerHTML =
+    '<div class="box"><h1>Couldn\'t load 3D engine</h1><p>The Three.js library failed to load (no network?). Reload with a connection.</p></div>';
+  throw new Error('THREE failed to load');
+}
+
+const SAVE_KEY = 'blockworld.save.v1';
+
+/* ---------- Block palette ---------- */
+const BLOCKS = [
+  {name:'Grass',  color:0x6ab04c},
+  {name:'Dirt',   color:0x8a5a2b},
+  {name:'Stone',  color:0x9098a1},
+  {name:'Wood',   color:0x7a5230},
+  {name:'Leaves', color:0x4c9a3f},
+  {name:'Sand',   color:0xe0d29a},
+];
+let selected = 0;
+
+/* ---------- Renderer / scene ---------- */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87b8e8);
+scene.fog = new THREE.Fog(0x87b8e8, 28, 60);
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 1000);
+camera.rotation.order = 'YXZ';
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x556644, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+sun.position.set(20, 40, 12);
+scene.add(sun);
+
+/* ---------- Voxel world data ---------- */
+const world = new Map();                    // "x,y,z" -> block type index
+const key = (x,y,z)=>x+','+y+','+z;
+const isSolid = (x,y,z)=>world.has(key(x,y,z));
+
+const WX = 32, WZ = 32, MAXSCAN = 24;
+function heightAt(x,z){
+  return 3 + Math.round(1.6*(Math.sin(x*0.28)+Math.cos(z*0.31)) + Math.sin((x+z)*0.15));
+}
+function generateWorld(){
+  world.clear();
+  for(let x=0;x<WX;x++) for(let z=0;z<WZ;z++){
+    const h = heightAt(x,z);
+    for(let y=0;y<=h;y++){
+      let t = 2;                            // stone
+      if(y===h) t = (h<=1) ? 5 : 0;        // sand low, else grass
+      else if(y>=h-2) t = 1;               // dirt
+      world.set(key(x,y,z), t);
+    }
+  }
+}
+
+function loadWorld(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw) return false;
+    const arr = JSON.parse(raw);
+    if(!Array.isArray(arr) || !arr.length) return false;
+    world.clear();
+    for(const [x,y,z,t] of arr) world.set(key(x,y,z), t);
+    return true;
+  }catch(e){ console.warn('load failed', e); return false; }
+}
+let saveTimer = null;
+function scheduleSave(){
+  document.getElementById('save').textContent = 'saving…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{
+    try{
+      const arr = [];
+      for(const [k,t] of world){ const [x,y,z]=k.split(',').map(Number); arr.push([x,y,z,t]); }
+      localStorage.setItem(SAVE_KEY, JSON.stringify(arr));
+      document.getElementById('save').textContent = 'saved';
+    }catch(e){ document.getElementById('save').textContent = 'save failed'; }
+  }, 400);
+}
+
+if(!loadWorld()) generateWorld();
+
+/* ---------- Instanced rendering ---------- */
+const boxGeo = new THREE.BoxGeometry(1,1,1);
+const blockMat = new THREE.MeshLambertMaterial();
+let blocksMesh = null;
+const _m = new THREE.Matrix4();
+const _c = new THREE.Color();
+function rebuildBlocks(){
+  if(blocksMesh){ scene.remove(blocksMesh); blocksMesh.dispose && blocksMesh.dispose(); }
+  const count = world.size;
+  blocksMesh = new THREE.InstancedMesh(boxGeo, blockMat, count);
+  let i = 0;
+  for(const [k,t] of world){
+    const [x,y,z] = k.split(',').map(Number);
+    _m.makeTranslation(x+0.5, y+0.5, z+0.5);
+    blocksMesh.setMatrixAt(i, _m);
+    blocksMesh.setColorAt(i, _c.setHex(BLOCKS[t] ? BLOCKS[t].color : 0xffffff));
+    i++;
+  }
+  blocksMesh.instanceMatrix.needsUpdate = true;
+  if(blocksMesh.instanceColor) blocksMesh.instanceColor.needsUpdate = true;
+  scene.add(blocksMesh);
+  document.getElementById('bcount').textContent = count;
+}
+rebuildBlocks();
+
+function highestSolidY(x,z){
+  for(let y=MAXSCAN;y>=0;y--) if(isSolid(x,y,z)) return y;
+  return -1;
+}
+
+/* ---------- Player ---------- */
+const player = {
+  pos: new THREE.Vector3(WX/2, (highestSolidY(WX>>1, WZ>>1)+2), WZ/2), // feet
+  vel: new THREE.Vector3(),
+  onGround: false,
+  yaw: 0, pitch: 0,
+  hw: 0.3, height: 1.7, eye: 1.55
+};
+const keys = {};
+addEventListener('keydown', e=>{ keys[e.code]=true; onKey(e); });
+addEventListener('keyup',   e=>{ keys[e.code]=false; });
+
+function playerCollides(p){
+  const minX=Math.floor(p.x-player.hw), maxX=Math.floor(p.x+player.hw);
+  const minY=Math.floor(p.y),           maxY=Math.floor(p.y+player.height);
+  const minZ=Math.floor(p.z-player.hw), maxZ=Math.floor(p.z+player.hw);
+  for(let x=minX;x<=maxX;x++)
+    for(let y=minY;y<=maxY;y++)
+      for(let z=minZ;z<=maxZ;z++)
+        if(isSolid(x,y,z)) return true;
+  return false;
+}
+function moveAxis(axis, d){
+  const p = player.pos;
+  p[axis] += d;
+  if(playerCollides(p)){
+    p[axis] -= d;
+    if(axis==='y'){ if(d<0) player.onGround=true; player.vel.y=0; }
+    else player.vel[axis]=0;
+    return true;
+  }
+  if(axis==='y' && d<0) player.onGround=false;
+  return false;
+}
+
+/* ---------- Voxel raycast (place/break targeting) ---------- */
+function raycastVoxel(maxDist){
+  const dir = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation).normalize();
+  const o = camera.position;
+  let x=Math.floor(o.x), y=Math.floor(o.y), z=Math.floor(o.z);
+  const sx=Math.sign(dir.x), sy=Math.sign(dir.y), sz=Math.sign(dir.z);
+  const dX = sx!==0 ? Math.abs(1/dir.x):Infinity;
+  const dY = sy!==0 ? Math.abs(1/dir.y):Infinity;
+  const dZ = sz!==0 ? Math.abs(1/dir.z):Infinity;
+  let tX = sx!==0 ? ((sx>0?(x+1-o.x):(o.x-x))*dX):Infinity;
+  let tY = sy!==0 ? ((sy>0?(y+1-o.y):(o.y-y))*dY):Infinity;
+  let tZ = sz!==0 ? ((sz>0?(z+1-o.z):(o.z-z))*dZ):Infinity;
+  let px=x, py=y, pz=z, t=0;
+  for(let i=0;i<128 && t<=maxDist;i++){
+    if(isSolid(x,y,z)) return {hit:true, cell:[x,y,z], prev:[px,py,pz]};
+    px=x; py=y; pz=z;
+    if(tX<=tY && tX<=tZ){ x+=sx; t=tX; tX+=dX; }
+    else if(tY<=tZ){ y+=sy; t=tY; tY+=dY; }
+    else { z+=sz; t=tZ; tZ+=dZ; }
+  }
+  return {hit:false};
+}
+function overlapsPlayer(cx,cy,cz){
+  const p=player.pos;
+  return cx>=Math.floor(p.x-player.hw) && cx<=Math.floor(p.x+player.hw) &&
+         cy>=Math.floor(p.y)          && cy<=Math.floor(p.y+player.height) &&
+         cz>=Math.floor(p.z-player.hw) && cz<=Math.floor(p.z+player.hw);
+}
+function breakBlock(){
+  const r = raycastVoxel(6);
+  if(r.hit){ world.delete(key(...r.cell)); rebuildBlocks(); scheduleSave(); }
+}
+function placeBlock(){
+  const r = raycastVoxel(6);
+  if(r.hit && !overlapsPlayer(...r.prev) && r.prev[1]>=0){
+    world.set(key(...r.prev), selected); rebuildBlocks(); scheduleSave();
+  }
+}
+
+/* ---------- AI helper ---------- */
+function makeLabel(text){
+  const cv = document.createElement('canvas'); cv.width=256; cv.height=64;
+  const g = cv.getContext('2d');
+  g.fillStyle='rgba(0,0,0,.55)'; g.fillRect(0,0,256,64);
+  g.fillStyle='#9fd0ff'; g.font='bold 34px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText(text, 128, 32);
+  const tex = new THREE.CanvasTexture(cv);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, depthTest:false}));
+  spr.scale.set(2.4,0.6,1); spr.position.y = 2.2;
+  return spr;
+}
+const helper = {
+  group: new THREE.Group(),
+  pos: new THREE.Vector3(WX/2+3, 0, WZ/2+3),
+  state: 'idle',
+  buildTarget: null, buildLeft: 0, buildTimer: 0
+};
+(function buildHelperMesh(){
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.0,0.4), new THREE.MeshLambertMaterial({color:0x3b7dd8}));
+  body.position.y = 0.9;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), new THREE.MeshLambertMaterial({color:0xf1c27d}));
+  head.position.y = 1.65;
+  helper.group.add(body, head, makeLabel('Pixel'));
+  scene.add(helper.group);
+})();
+function groundY(x,z){ return highestSolidY(Math.floor(x), Math.floor(z)) + 1; }
+function setHelperState(s){ helper.state=s; document.getElementById('hstate').textContent=s; }
+function helperBuildWhereLooking(){
+  const r = raycastVoxel(8);
+  const base = r.hit ? r.prev : null;
+  if(!base){ return; }
+  helper.buildTarget = [base[0], groundY(base[0], base[2]), base[2]];
+  helper.buildLeft = 4;               // pillar height
+  helper.buildTimer = 0;
+  setHelperState('building');
+}
+function updateHelper(dt){
+  const h = helper;
+  let target = null;
+  if(h.state==='follow') target = new THREE.Vector3(player.pos.x, 0, player.pos.z);
+  else if(h.state==='building' && h.buildTarget) target = new THREE.Vector3(h.buildTarget[0]+0.5, 0, h.buildTarget[2]+0.5);
+
+  if(target){
+    const dx = target.x - h.pos.x, dz = target.z - h.pos.z;
+    const dist = Math.hypot(dx,dz);
+    const stopAt = h.state==='follow' ? 2.2 : 1.3;
+    if(dist > stopAt){
+      const spd = 3.2*dt;
+      h.pos.x += dx/dist*Math.min(spd,dist);
+      h.pos.z += dz/dist*Math.min(spd,dist);
+      h.group.rotation.y = Math.atan2(dx,dz);
+    } else if(h.state==='building'){
+      h.buildTimer -= dt;
+      if(h.buildTimer<=0 && h.buildLeft>0){
+        const [bx,by,bz] = h.buildTarget;
+        const y = by + (4 - h.buildLeft);
+        if(!isSolid(bx,y,bz)){ world.set(key(bx,y,bz), 3); rebuildBlocks(); scheduleSave(); }
+        h.buildLeft--; h.buildTimer = 0.35;
+        if(h.buildLeft<=0) setHelperState('idle');
+      }
+    }
+  }
+  // keep helper on the surface, bob slightly
+  const gy = groundY(h.pos.x, h.pos.z);
+  h.pos.y = (gy>=0?gy:0);
+  h.group.position.set(h.pos.x, h.pos.y + Math.sin(performance.now()*0.004)*0.04, h.pos.z);
+}
+
+/* ---------- Input ---------- */
+function onKey(e){
+  if(e.code>='Digit1' && e.code<='Digit6'){ selected = +e.code.slice(5)-1; renderHotbar(); }
+  if(e.code==='KeyF'){ setHelperState(helper.state==='follow'?'idle':'follow'); }
+  if(e.code==='KeyB'){ helperBuildWhereLooking(); }
+  if(e.code==='KeyH'){ setHelperState('idle'); }
+}
+canvas.addEventListener('mousedown', e=>{
+  if(document.pointerLockElement!==canvas) return;
+  if(e.button===0) breakBlock();
+  else if(e.button===2) placeBlock();
+});
+addEventListener('contextmenu', e=>e.preventDefault());
+
+// pointer lock + mouse look
+const overlay = document.getElementById('overlay');
+overlay.addEventListener('click', ()=>canvas.requestPointerLock());
+document.addEventListener('pointerlockchange', ()=>{
+  overlay.style.display = (document.pointerLockElement===canvas) ? 'none' : 'flex';
+});
+document.addEventListener('mousemove', e=>{
+  if(document.pointerLockElement!==canvas) return;
+  player.yaw   -= e.movementX*0.0022;
+  player.pitch -= e.movementY*0.0022;
+  player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch));
+});
+
+/* ---------- Hotbar UI ---------- */
+function renderHotbar(){
+  document.getElementById('hotbar').innerHTML = BLOCKS.map((b,i)=>
+    '<div class="slot '+(i===selected?'sel':'')+'">'+
+      '<div class="sw" style="background:#'+b.color.toString(16).padStart(6,'0')+'"></div>'+
+      b.name+'<span class="k"> '+(i+1)+'</span></div>'
+  ).join('');
+}
+renderHotbar();
+
+/* ---------- Main loop ---------- */
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt = (now-last)/1000; last = now;
+  if(dt>0.05) dt = 0.05;
+
+  // orientation
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+
+  // movement input
+  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const right   = new THREE.Vector3( Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  const wish = new THREE.Vector3();
+  if(keys['KeyW']) wish.add(forward);
+  if(keys['KeyS']) wish.sub(forward);
+  if(keys['KeyD']) wish.add(right);
+  if(keys['KeyA']) wish.sub(right);
+  const speed = (keys['ShiftLeft']||keys['ShiftRight']) ? 8.5 : 5;
+  if(wish.lengthSq()>0){ wish.normalize().multiplyScalar(speed); }
+  player.vel.x = wish.x; player.vel.z = wish.z;
+
+  // gravity + jump
+  player.vel.y -= 22*dt;
+  if(keys['Space'] && player.onGround){ player.vel.y = 8.2; player.onGround=false; }
+
+  moveAxis('x', player.vel.x*dt);
+  moveAxis('z', player.vel.z*dt);
+  moveAxis('y', player.vel.y*dt);
+
+  // respawn if we fall out of the world
+  if(player.pos.y < -12){
+    player.pos.set(WX/2, highestSolidY(WX>>1,WZ>>1)+2, WZ/2);
+    player.vel.set(0,0,0);
+  }
+
+  camera.position.set(player.pos.x, player.pos.y+player.eye, player.pos.z);
+  updateHelper(dt);
+  renderer.render(scene, camera);
+
+  window.__ready = true;
+}
+requestAnimationFrame(frame);
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+addEventListener('beforeunload', ()=>{ clearTimeout(saveTimer);
+  try{ const arr=[]; for(const [k,t] of world){ const [x,y,z]=k.split(',').map(Number); arr.push([x,y,z,t]); } localStorage.setItem(SAVE_KEY, JSON.stringify(arr)); }catch(e){}
+});
+
+// expose a little state for sanity checks
+window.__game = { world, player, helper, BLOCKS };
+</script>
+</body>
+</html>
