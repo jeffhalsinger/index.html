@@ -70,6 +70,12 @@ class AnalysisReport:
     simplified_paths: list[PathFinding]
     paths: list[PathFinding]
     warnings: list[str] = field(default_factory=list)
+    # Unit / tolerance context.
+    unit_description: str = ""
+    mm_per_unit: float = 1.0
+    unit_ambiguous: bool = False
+    simplify_tolerance_mm: float | None = None
+    flatten_tolerance_mm: float | None = None
 
     @property
     def has_issues(self) -> bool:
@@ -85,23 +91,44 @@ class AnalysisReport:
             "paths": [f.as_dict() for f in self.paths],
             "warnings": self.warnings,
             "has_issues": self.has_issues,
+            "units": {
+                "description": self.unit_description,
+                "mm_per_unit": self.mm_per_unit,
+                "ambiguous": self.unit_ambiguous,
+            },
+            "simplify_tolerance_mm": self.simplify_tolerance_mm,
+            "flatten_tolerance_mm": self.flatten_tolerance_mm,
         }
 
 
-def _signature(path: VectorPath) -> tuple:
+def _signature(path: VectorPath, simplify_tol: float) -> tuple:
     """Location-and-shape signature used to spot duplicate / coincident paths.
 
     Built from the simplified polyline, rounded and made order-independent so it
     matches regardless of start vertex or winding direction (the usual ways a
     double-drawn contour differs).
     """
-    pts = geometry.rdp(path.points)
+    pts = geometry.rdp(path.points, simplify_tol)
     rounded = frozenset((round(x, 3), round(y, 3)) for x, y in pts)
     return (round(geometry.polyline_length(path.points), 2), rounded)
 
 
-def analyze(file_format: str, paths: list[VectorPath], warnings: list[str] | None = None) -> AnalysisReport:
-    """Run the validation checks over the loaded paths."""
+def analyze(
+    file_format: str,
+    paths: list[VectorPath],
+    warnings: list[str] | None = None,
+    *,
+    simplify_tol: float = geometry.SIMPLIFY_TOLERANCE,
+    unit=None,
+    simplify_tol_mm: float | None = None,
+    flatten_tol_mm: float | None = None,
+) -> AnalysisReport:
+    """Run the validation checks over the loaded paths.
+
+    ``simplify_tol`` is the Ramer-Douglas-Peucker tolerance in the drawing's own
+    units; ``simplify_tol_mm`` / ``flatten_tol_mm`` and ``unit`` are carried
+    through only for reporting.
+    """
     warnings = list(warnings or [])
 
     open_paths = [p.id for p in paths if not p.closed]
@@ -110,7 +137,7 @@ def analyze(file_format: str, paths: list[VectorPath], warnings: list[str] | Non
     # duplicate / coincident contours.
     by_sig: dict[tuple, list[str]] = defaultdict(list)
     for p in paths:
-        by_sig[_signature(p)].append(p.id)
+        by_sig[_signature(p, simplify_tol)].append(p.id)
     duplicate_groups = [ids for ids in by_sig.values() if len(ids) > 1]
 
     findings: list[PathFinding] = []
@@ -122,7 +149,7 @@ def analyze(file_format: str, paths: list[VectorPath], warnings: list[str] | Non
             source_segments=p.source_segment_count,
             curve_segments=p.curve_segment_count,
             flattened_points=len(p.points),
-            simplified_points=len(p.simplified()),
+            simplified_points=len(p.simplified(simplify_tol)),
         )
         findings.append(finding)
         if p.curve_segment_count > 0:
@@ -130,6 +157,9 @@ def analyze(file_format: str, paths: list[VectorPath], warnings: list[str] | Non
 
     if not paths:
         warnings.append("No vector paths were found in the file.")
+
+    if unit is not None and unit.ambiguous:
+        warnings.append(f"Units are ambiguous: {unit.description}. Verify the scale before cutting.")
 
     return AnalysisReport(
         file_format=file_format,
@@ -139,4 +169,9 @@ def analyze(file_format: str, paths: list[VectorPath], warnings: list[str] | Non
         simplified_paths=simplified,
         paths=findings,
         warnings=warnings,
+        unit_description=unit.description if unit is not None else "",
+        mm_per_unit=unit.mm_per_unit if unit is not None else 1.0,
+        unit_ambiguous=unit.ambiguous if unit is not None else False,
+        simplify_tolerance_mm=simplify_tol_mm,
+        flatten_tolerance_mm=flatten_tol_mm,
     )

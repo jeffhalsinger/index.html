@@ -9,6 +9,14 @@
   <p><strong>File:</strong> {{ source }} ({{ report.file_format|upper }})
      &nbsp;|&nbsp; <strong>Paths found:</strong> {{ report.path_count }}</p>
 
+  <p><strong>Units:</strong> {{ report.unit_description }}
+     {% if report.unit_ambiguous %}<span style="color:#a60">(ambiguous)</span>{% endif %}
+     {% if report.simplify_tolerance_mm is not none %}
+     <br><strong>Simplification tolerance:</strong> {{ "%.3f"|format(report.simplify_tolerance_mm) }} mm
+       ({{ "%.4g"|format(report.simplify_tolerance_mm / report.mm_per_unit) }} drawing units)
+     {% endif %}
+  </p>
+
   {% if not report.has_issues %}
   <p style="color:green"><strong>No issues found.</strong> All paths are closed and unique.</p>
   {% endif %}

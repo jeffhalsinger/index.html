@@ -46,6 +46,23 @@
      paths, and curve simplification. (Nothing is modified — report only.)</p>
   <form method="post" action="{{ url_for('cutprep.validate') }}" enctype="multipart/form-data">
     <p><input type="file" name="file" accept=".svg,.dxf" required></p>
+    <p>Optional — tie simplification precision to the cut:
+      <label>method
+        <select name="method">
+          <option value="">(none)</option>
+          {% for m in methods %}
+          <option value="{{ m.key }}">{{ m.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>thickness <input type="number" name="thickness" step="any" min="0"></label>
+      <label>
+        <select name="unit">
+          <option value="mm">mm</option>
+          <option value="in">inches</option>
+        </select>
+      </label>
+    </p>
     <p><button type="submit">Validate file</button></p>
   </form>
 </body>

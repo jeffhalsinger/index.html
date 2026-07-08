@@ -1,6 +1,7 @@
-"""Generate samples/messy_part.dxf for manual testing."""
+"""Generate samples/messy_part.dxf (millimetre units) for manual testing."""
 import ezdxf
 doc = ezdxf.new()
+doc.units = ezdxf.units.MM  # sets $INSUNITS = 4
 msp = doc.modelspace()
 # Closed square from 4 separate lines (a real-world "loose segments" contour)
 for a, b in [((0,0),(50,0)), ((50,0),(50,50)), ((50,50),(0,50)), ((0,50),(0,0))]:

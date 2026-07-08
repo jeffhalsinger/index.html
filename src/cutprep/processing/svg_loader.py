@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from svgpathtools import Arc, CubicBezier, Line, QuadraticBezier, svg2paths2
 
-from . import geometry
+from . import geometry, units
 from .geometry import Point
 from .model import VectorPath
+from .units import UnitInfo
 
 _CURVE_TYPES = (CubicBezier, QuadraticBezier, Arc)
 
@@ -35,13 +36,24 @@ def _flatten_segment(seg, tol: float) -> list[Point]:
     return pts
 
 
-def load_svg(filepath: str, tol: float = geometry.FLATTEN_TOLERANCE) -> tuple[list[VectorPath], list[str]]:
-    """Return ``(paths, warnings)`` parsed from ``filepath``."""
+def load_svg(
+    filepath: str,
+    flatten_tol_mm: float = geometry.FLATTEN_TOLERANCE,
+    fallback_unit: str = "mm",
+) -> tuple[list[VectorPath], list[str], UnitInfo | None]:
+    """Return ``(paths, warnings, unit_info)`` parsed from ``filepath``.
+
+    Curves are flattened to within ``flatten_tol_mm`` millimetres, converted to
+    the file's own user units via the resolved :class:`UnitInfo`.
+    """
     warnings: list[str] = []
     try:
-        paths, attributes, _svg_attrs = svg2paths2(filepath)
+        paths, attributes, svg_attrs = svg2paths2(filepath)
     except Exception as exc:  # malformed SVG, etc.
-        return [], [f"Could not parse SVG: {exc}"]
+        return [], [f"Could not parse SVG: {exc}"], None
+
+    unit = units.resolve_svg_units(svg_attrs, fallback_unit)
+    tol = flatten_tol_mm / unit.mm_per_unit
 
     result: list[VectorPath] = []
     for elem_idx, (path, attr) in enumerate(zip(paths, attributes)):
@@ -77,4 +89,4 @@ def load_svg(filepath: str, tol: float = geometry.FLATTEN_TOLERANCE) -> tuple[li
                 )
             )
 
-    return result, warnings
+    return result, warnings, unit

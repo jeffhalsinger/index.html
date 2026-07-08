@@ -81,7 +81,22 @@ def validate():
     dest = current_app.config["UPLOAD_DIR"] / filename
     upload.save(dest)
 
-    report = vector.analyze_file(dest)
+    # Optional cut-setup context: use the chosen method's kerf to size the
+    # simplification tolerance, and the chosen unit as the fallback for
+    # files that don't declare their own units.
+    kerf_mm = None
+    unit = request.form.get("unit", "mm")
+    fallback_unit = "in" if unit == "in" else "mm"
+    method = request.form.get("method")
+    raw_thickness = request.form.get("thickness")
+    if method in profiles.METHODS and raw_thickness:
+        try:
+            params = profiles.compute_parameters(method, float(raw_thickness), unit)
+            kerf_mm = params.kerf_mm
+        except (ValueError, KeyError):
+            pass
+
+    report = vector.analyze_file(dest, kerf_mm=kerf_mm, fallback_unit=fallback_unit)
     if wants_json:
         return jsonify(source=filename, report=report.as_dict())
     return render_template("report.html", source=filename, report=report)

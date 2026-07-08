@@ -5,22 +5,29 @@ from __future__ import annotations
 import ezdxf
 import pytest
 
-from cutprep.processing import vector
+from cutprep.processing import units, vector
 
 # --- SVG fixtures ------------------------------------------------------------
 
 CLEAN_SVG = """<?xml version="1.0"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">
   <path id="square" d="M0,0 L10,0 L10,10 L0,10 Z"/>
 </svg>
 """
 
 MESSY_SVG = """<?xml version="1.0"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">
   <path id="square" d="M0,0 L10,0 L10,10 L0,10 Z"/>
   <path id="square_dup" d="M0,0 L10,0 L10,10 L0,10 Z"/>
   <path id="openL" d="M20,0 L30,0 L30,10"/>
   <path id="curve" d="M0,20 C5,30 15,30 20,20"/>
+</svg>
+"""
+
+# No physical width -> units are ambiguous.
+UNITLESS_SVG = """<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <path id="square" d="M0,0 L10,0 L10,10 L0,10 Z"/>
 </svg>
 """
 
@@ -68,6 +75,7 @@ def test_svg_simplifies_curves(tmp_path):
 
 def _build_dxf(path):
     doc = ezdxf.new()
+    doc.units = ezdxf.units.MM  # $INSUNITS = 4
     msp = doc.modelspace()
     # Closed square from four separate LINE entities.
     msp.add_line((0, 0), (10, 0))
@@ -117,3 +125,53 @@ def test_unsupported_extension(tmp_path):
     p.write_text("hello")
     with pytest.raises(ValueError):
         vector.analyze_file(p)
+
+
+# --- unit-aware tolerance tests ---------------------------------------------
+
+
+def test_svg_physical_units_resolve_to_mm(tmp_path):
+    report = vector.analyze_file(_write(tmp_path, "clean.svg", CLEAN_SVG))
+    # width=100mm over a 100-unit viewBox -> 1 user unit == 1 mm.
+    assert report.mm_per_unit == pytest.approx(1.0)
+    assert not report.unit_ambiguous
+
+
+def test_svg_unitless_is_flagged_ambiguous(tmp_path):
+    report = vector.analyze_file(_write(tmp_path, "unitless.svg", UNITLESS_SVG))
+    assert report.unit_ambiguous
+    # 96 px/inch assumption.
+    assert report.mm_per_unit == pytest.approx(units.MM_PER_PX)
+    assert any("ambiguous" in w.lower() for w in report.warnings)
+
+
+def test_dxf_units_from_insunits():
+    assert units.resolve_dxf_units(4).mm_per_unit == pytest.approx(1.0)      # mm
+    assert units.resolve_dxf_units(1).mm_per_unit == pytest.approx(25.4)     # inch
+    assert units.resolve_dxf_units(0).ambiguous                              # unspecified
+
+
+def test_kerf_drives_simplification_tolerance(tmp_path):
+    svg = _write(tmp_path, "messy.svg", MESSY_SVG)
+    # Fine kerf (laser ~0.15mm) vs coarse kerf (plasma ~1.5mm).
+    fine = vector.analyze_file(svg, kerf_mm=0.15)
+    coarse = vector.analyze_file(svg, kerf_mm=1.5)
+
+    assert fine.simplify_tolerance_mm < coarse.simplify_tolerance_mm
+    fine_curve = next(f for f in fine.simplified_paths if f.id == "curve")
+    coarse_curve = next(f for f in coarse.simplified_paths if f.id == "curve")
+    # A coarser tolerance keeps fewer or equal points.
+    assert coarse_curve.simplified_points <= fine_curve.simplified_points
+
+
+def test_fallback_unit_used_for_unitless_dxf(tmp_path):
+    doc = ezdxf.new()
+    doc.header["$INSUNITS"] = 0  # force "unspecified"
+    doc.modelspace().add_circle((0, 0), 5)
+    p = tmp_path / "nounits.dxf"
+    doc.saveas(p)
+
+    mm = vector.analyze_file(p, fallback_unit="mm")
+    inch = vector.analyze_file(p, fallback_unit="in")
+    assert mm.mm_per_unit == pytest.approx(1.0)
+    assert inch.mm_per_unit == pytest.approx(25.4)

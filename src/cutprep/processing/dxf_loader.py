@@ -20,9 +20,10 @@ from dataclasses import dataclass
 import ezdxf
 from ezdxf import path as ezdxf_path
 
-from . import geometry
+from . import geometry, units
 from .geometry import Point
 from .model import VectorPath
+from .units import UnitInfo
 
 _CURVE_TYPES = {"ARC", "CIRCLE", "ELLIPSE", "SPLINE"}
 
@@ -131,13 +132,24 @@ def _assemble(segments: list[_Segment], tol: float) -> list[tuple[list[Point], b
     return chains
 
 
-def load_dxf(filepath: str, tol: float = geometry.FLATTEN_TOLERANCE) -> tuple[list[VectorPath], list[str]]:
-    """Return ``(paths, warnings)`` parsed from ``filepath``."""
+def load_dxf(
+    filepath: str,
+    flatten_tol_mm: float = geometry.FLATTEN_TOLERANCE,
+    fallback_unit: str = "mm",
+) -> tuple[list[VectorPath], list[str], UnitInfo | None]:
+    """Return ``(paths, warnings, unit_info)`` parsed from ``filepath``.
+
+    Curves are flattened to within ``flatten_tol_mm`` millimetres, converted to
+    the file's drawing units via the resolved :class:`UnitInfo`.
+    """
     warnings: list[str] = []
     try:
         doc = ezdxf.readfile(filepath)
     except (OSError, ezdxf.DXFError) as exc:
-        return [], [f"Could not parse DXF: {exc}"]
+        return [], [f"Could not parse DXF: {exc}"], None
+
+    unit = units.resolve_dxf_units(int(doc.header.get("$INSUNITS", 0)), fallback_unit)
+    tol = flatten_tol_mm / unit.mm_per_unit
 
     msp = doc.modelspace()
     result: list[VectorPath] = []
@@ -181,4 +193,4 @@ def load_dxf(filepath: str, tol: float = geometry.FLATTEN_TOLERANCE) -> tuple[li
             "Skipped unsupported DXF entities: " + ", ".join(sorted(skipped))
         )
 
-    return result, warnings
+    return result, warnings, unit
