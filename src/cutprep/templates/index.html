@@ -38,5 +38,15 @@
     </p>
     <p><button type="submit">Compute cut parameters</button></p>
   </form>
+
+  <hr>
+
+  <h2>2. Validate a vector file</h2>
+  <p>Upload an SVG or DXF. CutPrep reports open paths, duplicate/overlapping
+     paths, and curve simplification. (Nothing is modified — report only.)</p>
+  <form method="post" action="{{ url_for('cutprep.validate') }}" enctype="multipart/form-data">
+    <p><input type="file" name="file" accept=".svg,.dxf" required></p>
+    <p><button type="submit">Validate file</button></p>
+  </form>
 </body>
 </html>

@@ -13,8 +13,9 @@ authors = [{ name = "CutPrep" }]
 dependencies = [
     "Flask>=3.0",
     "Pillow>=10.0",
-    "svgwrite>=1.4",
     "svgpathtools>=1.6",
+    "ezdxf>=1.1",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]

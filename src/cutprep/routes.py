@@ -1,15 +1,20 @@
 """HTTP routes for CutPrep.
 
-Feature 1 (this file for now): the input step. The user picks a cutting method
-and material thickness; we derive and display the kerf width and minimum safe
-feature size. File upload / validation is added in the next feature.
+Feature 1: the input step. The user picks a cutting method and material
+thickness; we derive kerf width and minimum safe feature size.
+
+Feature 2: vector file validation. The user uploads an SVG or DXF; we report
+open paths, duplicate/overlapping paths, and curve simplification. Report-only.
 """
 
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request
+from pathlib import Path
 
-from .processing import profiles
+from flask import Blueprint, current_app, jsonify, render_template, request
+from werkzeug.utils import secure_filename
+
+from .processing import profiles, vector
 
 bp = Blueprint("cutprep", __name__)
 
@@ -47,6 +52,39 @@ def analyze():
 
     params = profiles.compute_parameters(method, thickness, unit)
     return render_template("result.html", params=params.as_dict())
+
+
+@bp.post("/validate")
+def validate():
+    """Validate an uploaded SVG/DXF file and report issues (no file written).
+
+    Returns JSON when ``?format=json`` is set or the client asks for JSON;
+    otherwise renders an HTML report.
+    """
+    wants_json = request.args.get("format") == "json" or request.accept_mimetypes.best == "application/json"
+
+    if "file" not in request.files or not request.files["file"].filename:
+        msg = "No file was uploaded."
+        if wants_json:
+            return jsonify(error=msg), 400
+        return render_template("index.html", methods=profiles.METHODS.values(), errors=[msg]), 400
+
+    upload = request.files["file"]
+    ext = Path(upload.filename).suffix.lstrip(".").lower()
+    if ext not in vector.SUPPORTED_EXTENSIONS:
+        msg = f"Unsupported file type: .{ext}. Accepted: {', '.join(vector.SUPPORTED_EXTENSIONS)}."
+        if wants_json:
+            return jsonify(error=msg), 415
+        return render_template("index.html", methods=profiles.METHODS.values(), errors=[msg]), 415
+
+    filename = secure_filename(upload.filename)
+    dest = current_app.config["UPLOAD_DIR"] / filename
+    upload.save(dest)
+
+    report = vector.analyze_file(dest)
+    if wants_json:
+        return jsonify(source=filename, report=report.as_dict())
+    return render_template("report.html", source=filename, report=report)
 
 
 @bp.get("/api/parameters")

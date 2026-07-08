@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CutPrep — Validation Report</title>
+</head>
+<body>
+  <h1>Validation report</h1>
+  <p><strong>File:</strong> {{ source }} ({{ report.file_format|upper }})
+     &nbsp;|&nbsp; <strong>Paths found:</strong> {{ report.path_count }}</p>
+
+  {% if not report.has_issues %}
+  <p style="color:green"><strong>No issues found.</strong> All paths are closed and unique.</p>
+  {% endif %}
+
+  {% if report.warnings %}
+  <h2>Warnings</h2>
+  <ul>{% for w in report.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <h2>Open (non-closed) paths</h2>
+  {% if report.open_paths %}
+  <p style="color:red">These paths do not form closed loops and will not cut correctly:</p>
+  <ul>{% for pid in report.open_paths %}<li>{{ pid }}</li>{% endfor %}</ul>
+  {% else %}
+  <p>None — every path is closed.</p>
+  {% endif %}
+
+  <h2>Duplicate / overlapping paths</h2>
+  {% if report.duplicate_groups %}
+  <p style="color:red">Each group below contains paths with identical geometry (drawn on top of each other):</p>
+  <ul>
+    {% for group in report.duplicate_groups %}
+    <li>{{ group|join(", ") }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>None — no duplicate or coincident paths detected.</p>
+  {% endif %}
+
+  <h2>Curve simplification</h2>
+  {% if report.simplified_paths %}
+  <p>Paths containing bezier/spline/arc curves, and the polyline they simplify to:</p>
+  <table border="1" cellpadding="6">
+    <tr><th>Path</th><th>Curve segments</th><th>Flattened points</th><th>Simplified points</th></tr>
+    {% for f in report.simplified_paths %}
+    <tr>
+      <td>{{ f.id }}</td>
+      <td>{{ f.curve_segments }}</td>
+      <td>{{ f.flattened_points }}</td>
+      <td>{{ f.simplified_points }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>None — no curved segments to simplify.</p>
+  {% endif %}
+
+  <h2>All paths</h2>
+  <table border="1" cellpadding="6">
+    <tr><th>Path</th><th>Closed?</th><th>Source segments</th><th>Curve segments</th><th>Simplified points</th></tr>
+    {% for f in report.paths %}
+    <tr>
+      <td>{{ f.id }}</td>
+      <td>{{ "yes" if f.closed else "OPEN" }}</td>
+      <td>{{ f.source_segments }}</td>
+      <td>{{ f.curve_segments }}</td>
+      <td>{{ f.simplified_points }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <p><a href="{{ url_for('cutprep.index') }}">&larr; Back</a></p>
+</body>
+</html>
