@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CutPrep — Cut Parameters</title>
+</head>
+<body>
+  <h1>Cut parameters</h1>
+
+  <table border="1" cellpadding="6">
+    <tr><th align="left">Cutting method</th><td>{{ params.method_label }}</td></tr>
+    <tr>
+      <th align="left">Material thickness</th>
+      <td>{{ params.thickness.in }} in&nbsp; / &nbsp;{{ params.thickness.mm }} mm</td>
+    </tr>
+    <tr>
+      <th align="left">Kerf width</th>
+      <td>{{ params.kerf_width.in }} in&nbsp; / &nbsp;{{ params.kerf_width.mm }} mm</td>
+    </tr>
+    <tr>
+      <th align="left">Minimum safe feature size</th>
+      <td>{{ params.min_feature_size.in }} in&nbsp; / &nbsp;{{ params.min_feature_size.mm }} mm</td>
+    </tr>
+  </table>
+
+  <p><a href="{{ url_for('cutprep.index') }}">&larr; Start over</a></p>
+</body>
+</html>

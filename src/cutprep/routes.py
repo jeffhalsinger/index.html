@@ -1,71 +1,70 @@
-"""HTTP routes for CutPrep."""
+"""HTTP routes for CutPrep.
+
+Feature 1 (this file for now): the input step. The user picks a cutting method
+and material thickness; we derive and display the kerf width and minimum safe
+feature size. File upload / validation is added in the next feature.
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
+from flask import Blueprint, render_template, request
 
-from flask import Blueprint, current_app, jsonify, request
-from werkzeug.utils import secure_filename
-
-from .processing import profiles, raster, vector
+from .processing import profiles
 
 bp = Blueprint("cutprep", __name__)
 
 
-def _extension(filename: str) -> str:
-    return Path(filename).suffix.lstrip(".").lower()
-
-
 @bp.get("/")
 def index():
-    """Health/landing endpoint."""
-    return jsonify(
-        app="CutPrep",
-        status="ok",
-        message="Preps images and vector files for CNC cutting.",
-        processes=list(profiles.PROFILES),
-    )
+    """Render the input form."""
+    return render_template("index.html", methods=profiles.METHODS.values())
 
 
-@bp.get("/profiles")
-def list_profiles():
-    """Return the available cutting-process profiles."""
-    return jsonify({name: p.as_dict() for name, p in profiles.PROFILES.items()})
+@bp.post("/analyze")
+def analyze():
+    """Compute cutting parameters from the submitted method + thickness."""
+    method = request.form.get("method", "")
+    unit = request.form.get("unit", "in")
+    raw_thickness = request.form.get("thickness", "")
+
+    errors = []
+    if method not in profiles.METHODS:
+        errors.append(f"Unknown cutting method: {method!r}")
+
+    thickness = None
+    try:
+        thickness = float(raw_thickness)
+        if thickness <= 0:
+            errors.append("Thickness must be greater than zero.")
+    except (TypeError, ValueError):
+        errors.append(f"Thickness must be a number (got {raw_thickness!r}).")
+
+    if errors:
+        return (
+            render_template("index.html", methods=profiles.METHODS.values(), errors=errors),
+            400,
+        )
+
+    params = profiles.compute_parameters(method, thickness, unit)
+    return render_template("result.html", params=params.as_dict())
 
 
-@bp.post("/prep")
-def prep():
-    """Accept an uploaded file and prep it for the requested cutting process.
+@bp.get("/api/parameters")
+def api_parameters():
+    """JSON variant of :func:`analyze`, handy for scripted testing.
 
-    Form fields:
-        file:    the uploaded image or vector file (required)
-        process: one of ``plasma``, ``laser``, ``waterjet`` (default ``laser``)
+    Query params: ``method``, ``thickness``, ``unit``.
     """
-    if "file" not in request.files:
-        return jsonify(error="no file provided"), 400
+    from flask import jsonify
 
-    upload = request.files["file"]
-    if not upload.filename:
-        return jsonify(error="empty filename"), 400
+    method = request.args.get("method", "")
+    unit = request.args.get("unit", "in")
+    try:
+        thickness = float(request.args.get("thickness", ""))
+        params = profiles.compute_parameters(method, thickness, unit)
+    except KeyError:
+        return jsonify(error=f"unknown method: {method}"), 400
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
 
-    raster_exts = current_app.config["RASTER_EXTENSIONS"]
-    vector_exts = current_app.config["VECTOR_EXTENSIONS"]
-    ext = _extension(upload.filename)
-    if ext not in (raster_exts | vector_exts):
-        return jsonify(error=f"unsupported file type: .{ext}"), 415
-
-    process = request.form.get("process", "laser")
-    if process not in profiles.PROFILES:
-        return jsonify(error=f"unknown process: {process}"), 400
-
-    filename = secure_filename(upload.filename)
-    dest = current_app.config["UPLOAD_DIR"] / filename
-    upload.save(dest)
-
-    profile = profiles.PROFILES[process]
-    if ext in raster_exts:
-        result = raster.prep(dest, profile)
-    else:
-        result = vector.prep(dest, profile)
-
-    return jsonify(process=process, source=filename, result=result)
+    return jsonify(params.as_dict())

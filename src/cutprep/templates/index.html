@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CutPrep — Cut Setup</title>
+</head>
+<body>
+  <h1>CutPrep</h1>
+  <p>Prep images and vector files for CNC cutting.</p>
+
+  {% if errors %}
+  <ul style="color:red">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <h2>1. Cut setup</h2>
+  <form method="post" action="{{ url_for('cutprep.analyze') }}">
+    <p>
+      <label>Cutting method:
+        <select name="method">
+          {% for m in methods %}
+          <option value="{{ m.key }}">{{ m.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </p>
+    <p>
+      <label>Material thickness:
+        <input type="number" name="thickness" step="any" min="0" required>
+      </label>
+      <label>
+        <select name="unit">
+          <option value="in">inches</option>
+          <option value="mm">mm</option>
+        </select>
+      </label>
+    </p>
+    <p><button type="submit">Compute cut parameters</button></p>
+  </form>
+</body>
+</html>
