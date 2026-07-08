@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Tooling
+.ruff_cache/
+.mypy_cache/
+
+# Environment / secrets
+.env
+
+# Uploaded / generated files (keep the directory, ignore contents)
+uploads/*
+!uploads/.gitkeep
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
