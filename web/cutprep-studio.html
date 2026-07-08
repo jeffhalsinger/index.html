@@ -1,0 +1,485 @@
+<title>CutPrep Studio — image to cut-ready file</title>
+<style>
+  :root{
+    color-scheme: light dark;
+    --ground:#e7ebf0; --paper:#fff; --panel:#f4f6f9; --ink:#14202b; --muted:#5b6a77;
+    --line:#cdd6df; --line2:#aebac6; --grid:rgba(20,45,70,.055);
+    --accent:#d9480f; --accent-ink:#fff; --ok:#2b8a3e; --ok-bg:rgba(43,138,62,.12);
+    --bad:#c92a2a; --bad-bg:rgba(201,42,42,.11); --warn:#9c6a00; --warn-bg:rgba(240,170,0,.15);
+    --isl:#1971c2; --isl-bg:rgba(25,113,194,.12);
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","SFMono-Regular",Menlo,Consolas,monospace; --r:5px;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ground:#0d1418; --paper:#151d24; --panel:#111820; --ink:#dce4ea; --muted:#8496a3;
+    --line:#253039; --line2:#34424d; --grid:rgba(120,165,200,.06);
+    --accent:#ff6a2b; --accent-ink:#1a0d05; --ok:#51cf66; --ok-bg:rgba(81,207,102,.14);
+    --bad:#ff6b6b; --bad-bg:rgba(255,107,107,.14); --warn:#ffca57; --warn-bg:rgba(255,202,87,.13);
+    --isl:#4dabf7; --isl-bg:rgba(77,171,247,.14);
+  }}
+  :root[data-theme="light"]{color-scheme:light;--ground:#e7ebf0;--paper:#fff;--panel:#f4f6f9;--ink:#14202b;--muted:#5b6a77;--line:#cdd6df;--line2:#aebac6;--grid:rgba(20,45,70,.055);--accent:#d9480f;--accent-ink:#fff;--ok:#2b8a3e;--ok-bg:rgba(43,138,62,.12);--bad:#c92a2a;--bad-bg:rgba(201,42,42,.11);--warn:#9c6a00;--warn-bg:rgba(240,170,0,.15);--isl:#1971c2;--isl-bg:rgba(25,113,194,.12);}
+  :root[data-theme="dark"]{color-scheme:dark;--ground:#0d1418;--paper:#151d24;--panel:#111820;--ink:#dce4ea;--muted:#8496a3;--line:#253039;--line2:#34424d;--grid:rgba(120,165,200,.06);--accent:#ff6a2b;--accent-ink:#1a0d05;--ok:#51cf66;--ok-bg:rgba(81,207,102,.14);--bad:#ff6b6b;--bad-bg:rgba(255,107,107,.14);--warn:#ffca57;--warn-bg:rgba(255,202,87,.13);--isl:#4dabf7;--isl-bg:rgba(77,171,247,.14);}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--sans);color:var(--ink);background-color:var(--ground);
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:22px 22px;line-height:1.5;-webkit-text-size-adjust:100%}
+  .wrap{max-width:760px;margin:0 auto;padding:20px 16px 72px}
+  .kicker{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand .tick{width:12px;height:22px;background:var(--accent);border-radius:1px;transform:translateY(3px);flex:none}
+  h1{font-size:clamp(1.6rem,6vw,2.15rem);margin:0;letter-spacing:-.02em;font-weight:800;text-wrap:balance}
+  .lede{color:var(--muted);margin:8px 0 0;max-width:60ch;font-size:.95rem}
+  .lede code{font-family:var(--mono);color:var(--ink)}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-top:16px}
+  .card>h2{font-size:.74rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;font-family:var(--mono);font-weight:600;display:flex;align-items:center;gap:8px}
+  .card>h2::before{content:"";width:6px;height:6px;background:var(--accent);border-radius:50%;flex:none}
+  .drop{border:1.5px dashed var(--line2);border-radius:var(--r);padding:18px 14px;text-align:center;transition:border-color .15s,background .15s}
+  .drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+  .drop input[type=file]{display:none}
+  .filebtn{display:inline-block;background:var(--accent);color:var(--accent-ink);font-weight:600;padding:10px 18px;border-radius:var(--r);cursor:pointer}
+  .drop .hint{color:var(--muted);font-size:.85rem;margin-top:10px}
+  .samples{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+  .samples .lbl{font-family:var(--mono);font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .chipbtn{font:inherit;font-size:.85rem;background:var(--panel);color:var(--ink);border:1px solid var(--line2);border-radius:100px;padding:6px 13px;cursor:pointer}
+  .chipbtn:hover{border-color:var(--accent);color:var(--accent)}
+  .setup{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+  @media(min-width:520px){.setup{grid-template-columns:repeat(4,1fr);align-items:end}}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field.wide{grid-column:1/-1}
+  .field label{font-family:var(--mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .field select,.field input{font:inherit;padding:9px 10px;border:1px solid var(--line2);border-radius:var(--r);background:var(--panel);color:var(--ink);width:100%}
+  .field input[type=number]{font-family:var(--mono)}
+  .row{display:flex;align-items:center;gap:10px}
+  input[type=range]{width:100%}
+  .muted{color:var(--muted);font-size:.82rem}
+  .empty{text-align:center;color:var(--muted);padding:28px 10px}
+  .previews{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:560px){.previews{grid-template-columns:1fr 1fr}}
+  figure{margin:0}
+  figcaption{font-family:var(--mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:6px}
+  canvas.view{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);display:block}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0}
+  .stat{border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;min-width:64px;background:var(--panel)}
+  .stat .n{font-family:var(--mono);font-size:1.3rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+  .stat .k{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:4px}
+  .stat.isl .n{color:var(--isl)} .stat.warn .n{color:var(--warn)}
+  .readout{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:12px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+  .readout div{display:flex;flex-direction:column}
+  .readout .k{font-size:.64rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+  .readout .v{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.76rem;color:var(--muted);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:15px;height:3px;border-radius:2px;display:inline-block}
+  .dl{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+  .dl a{flex:1;min-width:150px;text-align:center;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:13px;border-radius:var(--r);text-decoration:none}
+  .dl a.sec{background:var(--panel);color:var(--ink);border:1px solid var(--line2)}
+  .warnbox{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);border-radius:var(--r);padding:10px 13px;margin-top:14px;font-size:.86rem}
+  .warnbox ul{margin:6px 0 0;padding-left:18px}
+  footer{margin-top:26px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.8rem}
+  footer code{font-family:var(--mono);color:var(--ink)}
+  .spin{display:inline-block;color:var(--muted);font-size:.9rem}
+  #sandbox{position:absolute;left:-99999px;top:0;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none}
+</style>
+
+<div class="wrap">
+  <p class="kicker">CutPrep Studio · CNC cut-prep</p>
+  <div class="brand"><span class="tick"></span><h1>Image → cut-ready file</h1></div>
+  <p class="lede">Upload an <b>image</b> (PNG/JPG) or a <b>vector</b> file (SVG/DXF). CutPrep traces it,
+    finds open contours and drop-out islands (like a <b>pupil</b>), holds them with a tab or bridge sized
+    to your material, and exports a cut-ready <code>DXF</code> and <code>SVG</code> — scaled to real
+    millimetres, tuned to your cutting method.</p>
+
+  <section class="card">
+    <h2>1 · Load a file</h2>
+    <div class="drop" id="drop">
+      <label class="filebtn" for="file">Choose image / SVG / DXF</label>
+      <input type="file" id="file" accept=".png,.jpg,.jpeg,.bmp,.gif,.webp,.svg,.dxf,image/*">
+      <div class="hint">or drag a file here — PNG · JPG · SVG · DXF</div>
+    </div>
+    <div class="samples"><span class="lbl">Try a sample</span>
+      <button class="chipbtn" data-sample="face">Face (image, has a pupil)</button>
+      <button class="chipbtn" data-sample="svg">Stencil O (SVG)</button>
+    </div>
+
+    <div class="setup">
+      <div class="field"><label for="method">Cutting method</label>
+        <select id="method">
+          <option value="plasma_standard">Plasma (Standard Tip)</option>
+          <option value="plasma_fine">Plasma (Fine-Cut Tip)</option>
+          <option value="laser" selected>Laser</option>
+          <option value="waterjet">Waterjet</option>
+        </select></div>
+      <div class="field"><label for="thickness">Thickness</label><input id="thickness" type="number" min="0" step="any" value="3"></div>
+      <div class="field"><label for="unit">Units</label><select id="unit"><option value="mm">mm</option><option value="in">inch</option></select></div>
+      <div class="field"><label for="width" id="widthLabel">Design width (mm)</label><input id="width" type="number" min="0" step="any" value="100"></div>
+      <div class="field wide" id="threshWrap" hidden>
+        <label for="thresh">Threshold <span id="threshVal" class="muted"></span> · <label style="text-transform:none;letter-spacing:0"><input type="checkbox" id="invert"> invert (light shapes)</label></label>
+        <input type="range" id="thresh" min="1" max="254" value="128">
+      </div>
+    </div>
+  </section>
+
+  <div id="results"><div class="card"><div class="empty">Load a file or tap a sample to build a cut-ready file.</div></div></div>
+
+  <footer>Runs entirely in your browser — nothing is uploaded. Vectorization uses marching-squares tracing +
+    Ramer–Douglas–Peucker simplification (polylines, not arcs). This mirrors the CutPrep Python pipeline
+    (<code>opencv</code>/<code>shapely</code>/<code>ezdxf</code>) for the on-device demo.</footer>
+</div>
+<div id="sandbox"></div>
+
+<script>
+"use strict";
+/* =========================================================================
+   Pipeline core — Node-verified (marching squares, nesting, tabs, bridges).
+   ========================================================================= */
+const MM_PER_INCH=25.4;
+const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+function polylineLength(p){let s=0;for(let i=0;i<p.length-1;i++)s+=dist(p[i],p[i+1]);return s;}
+function perp(p,a,b){if(a[0]===b[0]&&a[1]===b[1])return dist(p,a);const dx=b[0]-a[0],dy=b[1]-a[1];return Math.abs(dx*(a[1]-p[1])-(a[0]-p[0])*dy)/Math.hypot(dx,dy);}
+function rdp(points,eps){const n=points.length;if(n<3)return points.slice();const keep=new Array(n).fill(false);keep[0]=keep[n-1]=true;const st=[[0,n-1]];
+  while(st.length){const [s,e]=st.pop();let dm=0,idx=-1;for(let i=s+1;i<e;i++){const d=perp(points[i],points[s],points[e]);if(d>dm){dm=d;idx=i;}}
+    if(dm>eps&&idx!==-1){keep[idx]=true;st.push([s,idx],[idx,e]);}}const o=[];for(let i=0;i<n;i++)if(keep[i])o.push(points[i]);return o;}
+function rdpClosed(loop,eps){if(loop.length<4)return loop.slice();const open=loop.concat([loop[0]]);const s=rdp(open,eps);s.pop();return s;}
+function traceField(field,w,h,level){
+  const at=(x,y)=>field[y*w+x];
+  const interp=(x1,y1,v1,x2,y2,v2)=>{let t=(level-v1)/(v2-v1);if(!isFinite(t))t=.5;return [x1+(x2-x1)*t,y1+(y2-y1)*t];};
+  const segs=[];
+  for(let y=0;y<h-1;y++)for(let x=0;x<w-1;x++){const tl=at(x,y),tr=at(x+1,y),br=at(x+1,y+1),bl=at(x,y+1);
+    let c=0;if(tl>level)c|=8;if(tr>level)c|=4;if(br>level)c|=2;if(bl>level)c|=1;if(c===0||c===15)continue;
+    const top=()=>interp(x,y,tl,x+1,y,tr),right=()=>interp(x+1,y,tr,x+1,y+1,br),bot=()=>interp(x,y+1,bl,x+1,y+1,br),left=()=>interp(x,y,tl,x,y+1,bl);
+    switch(c){case 1:case 14:segs.push([left(),bot()]);break;case 2:case 13:segs.push([bot(),right()]);break;
+      case 3:case 12:segs.push([left(),right()]);break;case 4:case 11:segs.push([top(),right()]);break;
+      case 6:case 9:segs.push([top(),bot()]);break;case 7:case 8:segs.push([left(),top()]);break;
+      case 5:segs.push([left(),top()]);segs.push([bot(),right()]);break;case 10:segs.push([top(),right()]);segs.push([left(),bot()]);break;}}
+  return linkLoops(segs);
+}
+function linkLoops(segs){const tol=1e-4;const key=p=>Math.round(p[0]/tol)+','+Math.round(p[1]/tol);const index=new Map();
+  segs.forEach((s,i)=>{for(const e of [0,1]){const k=key(s[e]);if(!index.has(k))index.set(k,[]);index.get(k).push([i,e]);}});
+  const used=new Array(segs.length).fill(false),loops=[];
+  for(let i=0;i<segs.length;i++){if(used[i])continue;used[i]=true;const pts=[segs[i][0],segs[i][1]];let ok=true;
+    while(ok){ok=false;const tail=pts[pts.length-1];const cand=index.get(key(tail))||[];
+      for(const [j,e] of cand){if(used[j])continue;used[j]=true;pts.push(segs[j][e===0?1:0]);ok=true;break;}}
+    if(pts.length>=4&&dist(pts[0],pts[pts.length-1])<=1e-3){pts.pop();loops.push(pts);}}
+  return loops;}
+function signedArea(p){let a=0;for(let i=0;i<p.length;i++){const [x1,y1]=p[i],[x2,y2]=p[(i+1)%p.length];a+=x1*y2-x2*y1;}return a/2;}
+function area(p){return Math.abs(signedArea(p));}
+function centroid(p){let x=0,y=0,a=0;for(let i=0;i<p.length;i++){const [x1,y1]=p[i],[x2,y2]=p[(i+1)%p.length];const cr=x1*y2-x2*y1;a+=cr;x+=(x1+x2)*cr;y+=(y1+y2)*cr;}a*=.5;if(Math.abs(a)<1e-9){let sx=0,sy=0;for(const q of p){sx+=q[0];sy+=q[1];}return [sx/p.length,sy/p.length];}return [x/(6*a),y/(6*a)];}
+function pointInPoly(pt,poly){let inside=false;const [x,y]=pt;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const [xi,yi]=poly[i],[xj,yj]=poly[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))inside=!inside;}return inside;}
+function bbox(p){let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;for(const [x,y] of p){if(x<a)a=x;if(y<b)b=y;if(x>c)c=x;if(y>d)d=y;}return [a,b,c,d];}
+function maxDim(p){const [a,b,c,d]=bbox(p);return Math.max(c-a,d-b);}
+function insidePoint(loop){for(const eps of [1.2,2.5,.6,4]){for(let i=0;i<loop.length;i++){const a=loop[i],b=loop[(i+1)%loop.length];
+  const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2],dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
+  for(const s of [1,-1]){const q=[mid[0]+nx*eps*s,mid[1]+ny*eps*s];if(pointInPoly(q,loop))return q;}}}return centroid(loop);}
+function nearestPoints(a,b){let best=Infinity,pa=a[0],pb=b[0];for(const p of a)for(const q of b){const d=dist(p,q);if(d<best){best=d;pa=p;pb=q;}}return {pa,pb,d:best};}
+function classify(loops,field,w,h,level){
+  const items=loops.map((loop,i)=>({i,loop,area:area(loop),ip:insidePoint(loop),parent:-1,depth:0,fg:true}));
+  for(const it of items){let best=-1,bestA=Infinity;for(const o of items){if(o.i===it.i||o.area<=it.area)continue;if(pointInPoly(it.ip,o.loop)&&o.area<bestA){best=o.i;bestA=o.area;}}it.parent=best;}
+  for(const it of items){let d=0,p=it.parent;while(p!==-1){d++;p=items.find(o=>o.i===p).parent;}it.depth=d;}
+  for(const it of items){if(field){const x=Math.min(w-1,Math.max(0,Math.round(it.ip[0]))),y=Math.min(h-1,Math.max(0,Math.round(it.ip[1])));it.fg=field[y*w+x]>level;}else it.fg=(it.depth%2===0);}
+  return {items,parts:items.filter(it=>it.fg&&it.depth===0),holes:items.filter(it=>!it.fg),islands:items.filter(it=>it.fg&&it.depth>=2)};
+}
+function gapLoopAt(loop,near,gap){let idx=0,bd=Infinity;for(let i=0;i<loop.length;i++){const d=dist(loop[i],near);if(d<bd){bd=d;idx=i;}}
+  const rot=loop.slice(idx).concat(loop.slice(0,idx));let fwd=0;while(fwd<rot.length-1&&polylineLength(rot.slice(0,fwd+2))<gap/2)fwd++;
+  const rev=[rot[0]].concat(rot.slice().reverse().slice(0,rot.length-1));let bwd=0;while(bwd<rev.length-1&&polylineLength(rev.slice(0,bwd+2))<gap/2)bwd++;
+  const startIdx=(rot.length-bwd)%rot.length;const open=[];for(let k=0;k<rot.length;k++){const gi=(startIdx+k)%rot.length;open.push(rot[gi]);if(gi===fwd)break;}
+  return {open,A:open[0],B:open[open.length-1]};}
+function evenTabs(loop,tabW,n){if(n<=0)return [{pts:loop.concat([loop[0]]),closed:true}];
+  const closed=loop.concat([loop[0]]),cum=[0];for(let i=1;i<closed.length;i++)cum.push(cum[i-1]+dist(closed[i-1],closed[i]));const per=cum[cum.length-1];
+  const at=s=>{s=((s%per)+per)%per;for(let i=1;i<cum.length;i++){if(cum[i]>=s){const t=(s-cum[i-1])/((cum[i]-cum[i-1])||1);return [closed[i-1][0]+(closed[i][0]-closed[i-1][0])*t,closed[i-1][1]+(closed[i][1]-closed[i-1][1])*t];}}return closed[0];};
+  const cuts=[];for(let k=0;k<n;k++)cuts.push(per*k/n);const arcs=[];
+  for(let k=0;k<n;k++){const g0=cuts[k]+tabW/2,g1=cuts[(k+1)%n]-tabW/2,start=g0,end=(g1>g0?g1:g1+per),N=Math.max(2,Math.ceil(end-start));const seg=[];for(let s=0;s<=N;s++)seg.push(at(start+(end-start)*s/N));arcs.push({pts:seg,closed:false});}
+  return arcs;}
+function multiGap(loop,centers,gap){const closed=loop.concat([loop[0]]),cum=[0];for(let i=1;i<closed.length;i++)cum.push(cum[i-1]+dist(closed[i-1],closed[i]));const per=cum[cum.length-1];
+  const marks=centers.map(c=>{let idx=0,bd=Infinity;for(let i=0;i<loop.length;i++){const d=dist(loop[i],c);if(d<bd){bd=d;idx=i;}}return cum[idx];});
+  const remove=new Array(loop.length).fill(false);
+  for(const sm of marks)for(let i=0;i<loop.length;i++){let d=Math.abs(cum[i]-sm);d=Math.min(d,per-d);if(d<gap/2)remove[i]=true;}
+  let s0=remove.indexOf(true);if(s0===-1)return [];const arcs=[];let cur=[];
+  for(let k=0;k<=loop.length;k++){const gi=(s0+k)%loop.length;if(remove[gi]){if(cur.length>=2)arcs.push(cur);cur=[];}else cur.push(loop[gi]);}
+  if(cur.length>=2)arcs.push(cur);return arcs;}
+function buildCut(cls,params){
+  const {items,parts,holes,islands}=cls;const polylines=[];const stats={tabs:0,bridges:0};const gappedHoles=new Map();
+  for(const isl of islands){const holeItem=items.find(o=>o.i===isl.parent);
+    if(!holeItem){polylines.push({pts:isl.loop.concat([isl.loop[0]]),closed:true,role:'island'});continue;}
+    const np=nearestPoints(isl.loop,holeItem.loop);const small=maxDim(isl.loop)<params.doubleIslandU;const pairs=[np];
+    if(!small){const far=isl.loop.reduce((m,p)=>dist(p,np.pa)>dist(m,np.pa)?p:m,isl.loop[0]);let hb=holeItem.loop[0],bd=Infinity;for(const q of holeItem.loop){const d=dist(q,far);if(d<bd){bd=d;hb=q;}}pairs.push({pa:far,pb:hb});}
+    if(!gappedHoles.has(holeItem.i))gappedHoles.set(holeItem.i,[]);
+    for(const bp of pairs){const gi=gapLoopAt(isl.loop,bp.pa,params.bridgeW),gh=gapLoopAt(holeItem.loop,bp.pb,params.bridgeW);
+      polylines.push({pts:gi.open,closed:false,role:'island'});
+      const cA=dist(gi.A,gh.A)<=dist(gi.A,gh.B)?gh.A:gh.B,cB=cA===gh.A?gh.B:gh.A;
+      polylines.push({pts:[gi.A,cA],closed:false,role:'bridge'});polylines.push({pts:[gi.B,cB],closed:false,role:'bridge'});
+      gappedHoles.get(holeItem.i).push(bp.pb);stats.bridges++;}}
+  for(const hole of holes){const gaps=gappedHoles.get(hole.i);
+    if(!gaps||!gaps.length){polylines.push({pts:hole.loop.concat([hole.loop[0]]),closed:true,role:'hole'});continue;}
+    for(const a of multiGap(hole.loop,gaps,params.bridgeW))polylines.push({pts:a,closed:false,role:'hole'});}
+  for(const part of parts){const per=polylineLength(part.loop.concat([part.loop[0]]));const n=Math.max(2,Math.round(per/params.tabEveryU));
+    for(const a of evenTabs(part.loop,params.tabW,n))polylines.push({...a,role:'part'});stats.tabs+=n;}
+  return {polylines,stats};
+}
+function toMM(polylines,mmPerUnit,flipH){return polylines.map(pl=>({closed:pl.closed,role:pl.role,pts:pl.pts.map(([x,y])=>[x*mmPerUnit,(flipH!==undefined?flipH-y:y)*mmPerUnit])}));}
+function boundsOf(pls){let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;for(const pl of pls)for(const [x,y] of pl.pts){if(x<a)a=x;if(y<b)b=y;if(x>c)c=x;if(y>d)d=y;}return [a,b,c,d];}
+function exportSVG(mm){const [a,b,c,d]=boundsOf(mm),pad=2,W=(c-a)+2*pad,H=(d-b)+2*pad;
+  const path=pl=>{let s='M '+pl.pts.map(([x,y])=>`${(x-a+pad).toFixed(3)},${(y-b+pad).toFixed(3)}`).join(' L ');if(pl.closed)s+=' Z';return s;};
+  const paths=mm.map(pl=>`<path d="${path(pl)}" fill="none" stroke="#000" stroke-width="0.1"/>`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(3)}mm" height="${H.toFixed(3)}mm" viewBox="0 0 ${W.toFixed(3)} ${H.toFixed(3)}">\n${paths}\n</svg>\n`;}
+// R12 POLYLINE output — no subclass markers/handles required, read by every CAM tool.
+function exportDXF(mm,unitName){const insunits=unitName==='in'?1:4,div=unitName==='in'?MM_PER_INCH:1,[a,b]=boundsOf(mm);
+  const out=['0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70',String(insunits),'0','ENDSEC','0','SECTION','2','ENTITIES'];
+  for(const pl of mm){
+    out.push('0','POLYLINE','8','CUT','66','1','70',pl.closed?'1':'0');
+    for(const [x,y] of pl.pts)out.push('0','VERTEX','8','CUT','10',((x-a)/div).toFixed(4),'20',((y-b)/div).toFixed(4));
+    out.push('0','SEQEND');
+  }
+  out.push('0','ENDSEC','0','EOF');return out.join('\n')+'\n';}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+
+/* =========================================================================
+   Vector loaders (SVG via browser geometry, DXF ASCII) -> closed loops
+   ========================================================================= */
+const PHYS={mm:1,cm:10,in:MM_PER_INCH,pt:MM_PER_INCH/72,pc:MM_PER_INCH/6},MM_PER_PX=MM_PER_INCH/96;
+function parseLen(t){if(!t)return null;const m=String(t).trim().match(/^([+-]?[0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?)\s*([a-z%]*)$/);return m?{value:parseFloat(m[1]),unit:m[2]||'px'}:null;}
+function svgUnits(width,vb){let vbW=null;if(vb){const p=vb.trim().split(/[\s,]+/);if(p.length===4)vbW=parseFloat(p[2]);}const pr=parseLen(width);
+  if(pr&&vbW){if(PHYS[pr.unit]!==undefined)return {mmPerUnit:pr.value*PHYS[pr.unit]/vbW,ambiguous:false};return {mmPerUnit:pr.value*MM_PER_PX/vbW,ambiguous:true};}
+  return {mmPerUnit:MM_PER_PX,ambiguous:true};}
+function parseSVG(text,flattenMm){
+  const doc=new DOMParser().parseFromString(text,'image/svg+xml');
+  if(doc.querySelector('parsererror'))return {loops:[],open:[],unit:{mmPerUnit:1,ambiguous:true},format:'svg',err:'Could not parse SVG.'};
+  const root=doc.documentElement,unit=svgUnits(root.getAttribute('width'),root.getAttribute('viewBox'));
+  const tol=flattenMm/unit.mmPerUnit,sandbox=document.getElementById('sandbox');sandbox.innerHTML='';
+  const node=document.importNode(root,true);sandbox.appendChild(node);
+  const els=node.querySelectorAll('path,rect,circle,ellipse,polygon,polyline,line');const loops=[],open=[];let idx=0;
+  els.forEach(el=>{let len=0;try{len=el.getTotalLength();}catch(e){len=0;}if(!len||!isFinite(len)){idx++;return;}
+    const steps=Math.max(3,Math.min(4000,Math.ceil(len/tol))),pts=[];for(let i=0;i<steps;i++){const p=el.getPointAtLength(len*i/steps);pts.push([p.x,p.y]);}
+    const tag=el.tagName.toLowerCase(),id=el.getAttribute('id')||`${tag}${idx}`;let closed;
+    if(tag==='path')closed=/z/i.test(el.getAttribute('d')||'')||dist(pts[0],pts[pts.length-1])<=tol*2;
+    else closed=(tag!=='line'&&tag!=='polyline');
+    if(closed)loops.push(pts);else open.push(id);idx++;});
+  sandbox.innerHTML='';return {loops,open,unit,format:'svg'};
+}
+const DXF_U={1:MM_PER_INCH,2:MM_PER_INCH*12,4:1,5:10,6:1000};
+function parseDXF(text,flattenMm){
+  const raw=text.split(/\r\n|\r|\n/),pairs=[];for(let i=0;i+1<raw.length;i+=2){const c=parseInt(raw[i].trim(),10);if(Number.isNaN(c)){i-=1;continue;}pairs.push([c,raw[i+1].trim()]);}
+  let insunits=6;for(let i=0;i<pairs.length-1;i++)if(pairs[i][0]===9&&pairs[i][1]==='$INSUNITS'){insunits=parseInt(pairs[i+1][1],10)||0;break;}
+  const mmPerUnit=DXF_U[insunits]!==undefined?DXF_U[insunits]:1,tol=flattenMm/mmPerUnit;
+  let inEnt=false;const ents=[];let cur=null;
+  for(const [code,val] of pairs){if(code===0){if(val==='SECTION'){cur=null;continue;}if(val==='ENDSEC'){if(cur)ents.push(cur);cur=null;inEnt=false;continue;}}
+    if(code===2&&val==='ENTITIES'){inEnt=true;continue;}if(!inEnt)continue;
+    if(code===0){if(cur)ents.push(cur);cur={type:val,codes:[]};continue;}if(cur)cur.codes.push([code,val]);}
+  const loops=[],openSegs=[];const first=(e,c)=>{for(const [cc,v] of e.codes)if(cc===c)return v;};
+  const arc=(cx,cy,r,a0,a1)=>{let sw=a1-a0;if(sw<=0)sw+=2*Math.PI;const n=Math.max(6,Math.ceil(r*sw/tol)),p=[];for(let i=0;i<=n;i++){const a=a0+sw*i/n;p.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}return p;};
+  for(const e of ents){const t=e.type,num=c=>parseFloat(first(e,c)||0);
+    if(t==='LINE')openSegs.push([[num(10),num(20)],[num(11),num(21)]]);
+    else if(t==='CIRCLE')loops.push(arc(num(10),num(20),num(40),0,2*Math.PI));
+    else if(t==='ARC')openSegs.push(arc(num(10),num(20),num(40),num(50)*Math.PI/180,num(51)*Math.PI/180));
+    else if(t==='LWPOLYLINE'){const vs=[];let closed=false,cxv=null;for(const [c,v] of e.codes){if(c===70)closed=(parseInt(v,10)&1)===1;else if(c===10)cxv=parseFloat(v);else if(c===20&&cxv!==null){vs.push([cxv,parseFloat(v)]);cxv=null;}}
+      if(vs.length>=2){if(closed||dist(vs[0],vs[vs.length-1])<=tol)loops.push(vs);else openSegs.push(vs);}}}
+  // chain open segments into loops
+  const chains=chainSegs(openSegs);for(const ch of chains){if(dist(ch[0],ch[ch.length-1])<=Math.max(tol,1e-3))loops.push(ch);}
+  const openIds=chains.filter(ch=>dist(ch[0],ch[ch.length-1])>Math.max(tol,1e-3)).map((_,i)=>`open-chain#${i}`);
+  return {loops,open:openIds,unit:{mmPerUnit,ambiguous:DXF_U[insunits]===undefined},format:'dxf'};
+}
+function chainSegs(segments){const n=segments.length,used=new Array(n).fill(false),tol=1e-3;
+  const key=p=>Math.round(p[0]/tol)+','+Math.round(p[1]/tol),index=new Map();
+  const add=(k,i)=>{if(!index.has(k))index.set(k,[]);index.get(k).push(i);};
+  segments.forEach((s,i)=>{add(key(s[0]),i);add(key(s[s.length-1]),i);});
+  const find=p=>{const l=index.get(key(p))||[];for(const j of l)if(!used[j])return j;return null;};
+  const chains=[];for(let i=0;i<n;i++){if(used[i])continue;used[i]=true;let pts=segments[i].slice();let prog=true;
+    while(prog){prog=false;let j=find(pts[pts.length-1]);if(j!==null){used[j]=true;const s=segments[j];const a=dist(s[0],pts[pts.length-1])<=tol?s:s.slice().reverse();pts=pts.concat(a.slice(1));prog=true;continue;}
+      j=find(pts[0]);if(j!==null){used[j]=true;const s=segments[j];const a=dist(s[s.length-1],pts[0])<=tol?s:s.slice().reverse();pts=a.slice(0,-1).concat(pts);prog=true;}}
+    chains.push(pts);}return chains;}
+
+/* =========================================================================
+   Cutting methods + samples
+   ========================================================================= */
+const METHODS={plasma_standard:{label:'Plasma (Standard Tip)',kerf:1.5,factor:1.5},plasma_fine:{label:'Plasma (Fine-Cut Tip)',kerf:.8,factor:1.0},laser:{label:'Laser',kerf:.15,factor:.5},waterjet:{label:'Waterjet',kerf:.9,factor:.5}};
+function tolForKerf(k){return k&&k>0?Math.min(.5,Math.max(.02,k*.1)):.1;}
+const SAMPLE_SVG=`<svg xmlns="http://www.w3.org/2000/svg" width="120mm" height="120mm" viewBox="0 0 120 120"><circle cx="60" cy="60" r="50"/><circle cx="60" cy="60" r="26"/><circle cx="60" cy="60" r="10"/></svg>`;
+
+/* =========================================================================
+   Image processing
+   ========================================================================= */
+function otsu(hist,total){let sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];let sumB=0,wB=0,max=0,thr=128;
+  for(let i=0;i<256;i++){wB+=hist[i];if(!wB)continue;const wF=total-wB;if(!wF)break;sumB+=i*hist[i];const mB=sumB/wB,mF=(sum-sumB)/wF;const between=wB*wF*(mB-mF)*(mB-mF);if(between>max){max=between;thr=i;}}return thr;}
+async function imageToGray(file){
+  const url=URL.createObjectURL(file);const img=new Image();
+  await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
+  let w=img.naturalWidth,h=img.naturalHeight;const maxSide=900;const sc=Math.min(1,maxSide/Math.max(w,h));w=Math.max(2,Math.round(w*sc));h=Math.max(2,Math.round(h*sc));
+  const cv=document.createElement('canvas');cv.width=w;cv.height=h;const ctx=cv.getContext('2d',{willReadFrequently:true});
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);URL.revokeObjectURL(url);
+  const d=ctx.getImageData(0,0,w,h).data;const gray=new Float32Array(w*h);const hist=new Uint32Array(256);
+  for(let i=0;i<w*h;i++){const a=d[i*4+3]/255;const g=(0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2])*a+255*(1-a);gray[i]=g;hist[Math.min(255,Math.max(0,Math.round(g)))]++;}
+  // 3x3 box blur to smooth marching squares
+  const bl=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0,c=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=w||ny>=h)continue;s+=gray[ny*w+nx];c++;}bl[y*w+x]=s/c;}
+  return {gray:bl,w,h,otsu:otsu(hist,w*h)};
+}
+
+/* =========================================================================
+   Orchestration + UI
+   ========================================================================= */
+const $=s=>document.querySelector(s);
+const fileInput=$('#file'),methodSel=$('#method'),thickInput=$('#thickness'),unitSel=$('#unit'),widthInput=$('#width'),
+  threshWrap=$('#threshWrap'),threshInput=$('#thresh'),threshVal=$('#threshVal'),invertChk=$('#invert'),resultsEl=$('#results');
+let state=null; // {kind:'image', gray,w,h, name} | {kind:'vector', loops, open, unit, format, name}
+let urls=[];
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function setBusy(msg){resultsEl.innerHTML=`<div class="card"><div class="empty"><span class="spin">${esc(msg)}</span></div></div>`;}
+
+async function onFile(file){
+  const name=file.name,ext=name.split('.').pop().toLowerCase();
+  try{
+    if(ext==='svg'||ext==='dxf'){threshWrap.hidden=true;widthInput.parentElement.style.opacity=.5;
+      const text=await file.text();state={kind:'vector',text,ext,name};run();}
+    else{setBusy('Reading image…');widthInput.parentElement.style.opacity=1;
+      const g=await imageToGray(file);state={kind:'image',...g,name};threshInput.value=g.otsu;threshWrap.hidden=false;run();}
+  }catch(e){resultsEl.innerHTML=`<div class="card"><div class="warnbox"><b>Couldn't read that file.</b><br>${esc(e.message||String(e))}</div></div>`;}
+}
+
+function run(){
+  if(!state)return;
+  urls.forEach(u=>URL.revokeObjectURL(u));urls=[];
+  const method=methodSel.value,kerf=METHODS[method].kerf,thickMm=(unitSel.value==='in'?parseFloat(thickInput.value||0)*MM_PER_INCH:parseFloat(thickInput.value||0))||1;
+  const minFeatureMm=Math.max(kerf,METHODS[method].factor*thickMm),simplifyMm=tolForKerf(kerf);
+  const bridgeMm=clamp(.75*thickMm,.6,6),tabMm=clamp(1.0*thickMm,1.0,8);
+
+  let loops,mmPerUnit,field=null,w=0,h=0,level=0,openIds=[],fmt,flipH,unitAmbiguous=false;
+  if(state.kind==='image'){
+    field=state.gray;w=state.w;h=state.h;level=parseInt(threshInput.value,10);
+    if(invertChk.checked)field=field; // handled below via level polarity
+    threshVal.textContent='('+threshInput.value+')';
+    // foreground = dark by default => shape where gray<level. marching squares needs fg high => use (255-gray) unless invert.
+    const fld=new Float32Array(w*h);for(let i=0;i<w*h;i++)fld[i]=invertChk.checked?field[i]:255-field[i];
+    const lv=invertChk.checked?level:255-level;
+    let raw=traceField(fld,w,h,lv).filter(l=>l.length>=6&&area(l)>4);
+    field=fld;level=lv;
+    if(!raw.length){resultsEl.innerHTML='<div class="card"><div class="warnbox"><b>No shapes found at this threshold.</b> Drag the threshold slider, or toggle “invert” if your design is light on a dark background.</div></div>';return;}
+    const bb=boundsOf(raw.map(pts=>({pts})));const bw=(bb[2]-bb[0])||1;
+    const targetMm=parseFloat(widthInput.value)||100;mmPerUnit=targetMm/bw;
+    const eps=simplifyMm/mmPerUnit;loops=raw.map(l=>rdpClosed(l,eps)).filter(l=>l.length>=3);
+    fmt='image';flipH=h;
+  }else{
+    const parsed=state.ext==='svg'?parseSVG(state.text,simplifyMm/2):parseDXF(state.text,simplifyMm/2);
+    if(parsed.err){resultsEl.innerHTML=`<div class="card"><div class="warnbox"><b>${esc(parsed.err)}</b></div></div>`;return;}
+    mmPerUnit=parsed.unit.mmPerUnit;unitAmbiguous=parsed.unit.ambiguous;openIds=parsed.open;fmt=parsed.format;
+    const eps=simplifyMm/mmPerUnit;loops=parsed.loops.map(l=>rdpClosed(l,eps)).filter(l=>l.length>=3);
+    if(!loops.length){resultsEl.innerHTML='<div class="card"><div class="warnbox"><b>No closed shapes found.</b>'+(openIds.length?' The file has only open paths — they can’t become cut parts.':'')+'</div></div>';return;}
+    flipH=fmt==='svg'?boundsOf(loops.map(pts=>({pts})))[3]+boundsOf(loops.map(pts=>({pts})))[1]:undefined;
+    // simpler flip for svg: mirror around its own height
+    if(fmt==='svg'){const bb=boundsOf(loops.map(pts=>({pts})));flipH=bb[1]+bb[3];}else flipH=undefined;
+  }
+
+  const cls=classify(loops,field,w,h,level);
+  const params={bridgeW:bridgeMm/mmPerUnit,tabW:tabMm/mmPerUnit,tabEveryU:90/mmPerUnit,doubleIslandU:(8*thickMm)/mmPerUnit,minFeatureU:minFeatureMm/mmPerUnit};
+  const cut=buildCut(cls,params);
+  const mm=toMM(cut.polylines,mmPerUnit,flipH);
+  const svg=exportSVG(mm),dxf=exportDXF(mm,unitSel.value);
+
+  // small-feature warnings
+  const warns=[];
+  const tiny=cls.islands.concat(cls.holes).filter(it=>maxDim(it.loop)*mmPerUnit<minFeatureMm);
+  if(tiny.length)warns.push(`${tiny.length} feature(s) are smaller than the ${minFeatureMm.toFixed(2)} mm minimum for ${METHODS[method].label} — they may not cut cleanly.`);
+  if(openIds.length)warns.push(`${openIds.length} open path(s) in the source were skipped (not closed shapes): ${openIds.slice(0,6).map(esc).join(', ')}${openIds.length>6?'…':''}.`);
+  if(unitAmbiguous)warns.push('Source file did not declare real-world units; scale assumed. Verify the output size before cutting.');
+  if(cls.islands.length)warns.push(`${cls.islands.length} drop-out island(s) detected and held with ${cut.stats.bridges} tab/bridge(s).`);
+
+  render({cls,cut,mm,svg,dxf,method,kerf,minFeatureMm,simplifyMm,bridgeMm,tabMm,mmPerUnit,warns,fmt,name:state.name});
+}
+
+function render(r){
+  const inch=v=>(v/MM_PER_INCH).toFixed(3);
+  const [a,b,c,d]=boundsOf(r.mm);const Wmm=(c-a).toFixed(1),Hmm=(d-b).toFixed(1);
+  let h=`<div class="card"><h2>2 · Cut-ready result</h2>`;
+  h+=`<div class="chips">
+    <div class="stat"><div class="n">${r.cls.parts.length}</div><div class="k">Parts</div></div>
+    <div class="stat"><div class="n">${r.cls.holes.length}</div><div class="k">Holes</div></div>
+    <div class="stat isl"><div class="n">${r.cls.islands.length}</div><div class="k">Islands</div></div>
+    <div class="stat"><div class="n">${r.cut.stats.bridges}</div><div class="k">Bridges</div></div>
+    <div class="stat"><div class="n">${r.cut.stats.tabs}</div><div class="k">Tabs</div></div>
+    <div class="stat"><div class="n">${Wmm}×${Hmm}</div><div class="k">Size mm</div></div>
+  </div>`;
+
+  h+=`<div class="previews">
+    <figure><figcaption>Source</figcaption><canvas class="view" id="src"></canvas></figure>
+    <figure><figcaption>Cut plan</figcaption><canvas class="view" id="plan"></canvas></figure>
+  </div>
+  <div class="legend"><span><i style="background:var(--ink)"></i>part cut</span><span><i style="background:var(--muted)"></i>hole (drops out)</span><span><i style="background:var(--isl)"></i>island kept</span><span><i style="background:var(--accent)"></i>tab / bridge gap</span></div>`;
+
+  h+=`<div class="readout">
+    <div><span class="k">Method</span><span class="v">${esc(METHODS[r.method].label)}</span></div>
+    <div><span class="k">Kerf</span><span class="v">${r.kerf} mm</span></div>
+    <div><span class="k">Min feature</span><span class="v">${r.minFeatureMm.toFixed(2)} mm</span></div>
+    <div><span class="k">Bridge / tab</span><span class="v">${r.bridgeMm.toFixed(1)} / ${r.tabMm.toFixed(1)} mm</span></div>
+    <div><span class="k">Simplify tol.</span><span class="v">${r.simplifyMm} mm</span></div>
+    <div><span class="k">Scale</span><span class="v">${r.mmPerUnit.toFixed(4)} mm/${r.fmt==='image'?'px':'unit'}</span></div>
+  </div>`;
+
+  if(r.warns.length)h+=`<div class="warnbox"><b>Before you cut</b><ul>${r.warns.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></div>`;
+
+  h+=`<div class="dl">
+    <a id="dlDxf" download="${esc(r.name.replace(/\.[^.]+$/,''))}-cut.dxf">⬇ Download DXF</a>
+    <a id="dlSvg" class="sec" download="${esc(r.name.replace(/\.[^.]+$/,''))}-cut.svg">⬇ Download SVG</a>
+  </div></div>`;
+  resultsEl.innerHTML=h;
+
+  const dxfUrl=URL.createObjectURL(new Blob([r.dxf],{type:'application/dxf'}));
+  const svgUrl=URL.createObjectURL(new Blob([r.svg],{type:'image/svg+xml'}));
+  urls.push(dxfUrl,svgUrl);$('#dlDxf').href=dxfUrl;$('#dlSvg').href=svgUrl;
+
+  drawSource($('#src'));
+  drawPlan($('#plan'),r);
+}
+
+function fitTransform(cv,bb,pad){const [a,b,c,d]=bb;const gw=(c-a)||1,gh=(d-b)||1;const W=cv.width,H=cv.height;const s=Math.min((W-2*pad)/gw,(H-2*pad)/gh);
+  return {s,ox:(W-gw*s)/2-a*s,oy:(H-gh*s)/2-b*s};}
+function drawSource(cv){cv.width=520;cv.height=420;const ctx=cv.getContext('2d');const css=getComputedStyle(document.documentElement);
+  ctx.fillStyle=css.getPropertyValue('--panel');ctx.fillRect(0,0,cv.width,cv.height);
+  if(state.kind==='image'){const {gray,w,h}=state;const off=document.createElement('canvas');off.width=w;off.height=h;const octx=off.getContext('2d');const img=octx.createImageData(w,h);
+    for(let i=0;i<w*h;i++){const v=Math.max(0,Math.min(255,gray[i]));img.data[i*4]=img.data[i*4+1]=img.data[i*4+2]=v;img.data[i*4+3]=255;}
+    octx.putImageData(img,0,0);const s=Math.min(cv.width/w,cv.height/h);const dw=w*s,dh=h*s;ctx.drawImage(off,(cv.width-dw)/2,(cv.height-dh)/2,dw,dh);}
+  else{ctx.fillStyle=css.getPropertyValue('--muted');ctx.font='13px monospace';ctx.textAlign='center';ctx.fillText(state.ext.toUpperCase()+' vector source',cv.width/2,cv.height/2);}
+}
+function drawPlan(cv,r){cv.width=520;cv.height=420;const ctx=cv.getContext('2d');const css=getComputedStyle(document.documentElement);
+  ctx.fillStyle=css.getPropertyValue('--panel');ctx.fillRect(0,0,cv.width,cv.height);
+  const bb=boundsOf(r.mm);const tf=fitTransform(cv,bb,24);const T=([x,y])=>[tf.ox+x*tf.s,tf.oy+y*tf.s];
+  // fill keep region: parts with holes (even-odd), then islands
+  const inkFill=css.getPropertyValue('--ink'),islFill=css.getPropertyValue('--isl');
+  // Draw filled keep using original loops mapped to mm too is complex; approximate fill from mm closed part/hole polylines
+  const parts=r.mm.filter(p=>p.role==='part');const holes=r.mm.filter(p=>p.role==='hole');
+  // (fill is approximate: source loops, not gapped) — build from classify loops in mm
+  const toMMloop=loop=>loop.map(([x,y])=>{const X=x*r.mmPerUnit,Y=(state.kind==='image'||r.fmt==='svg')?((r.fmt==='svg'?(bbSrcFlip(r)):state.h)-y)*r.mmPerUnit:y*r.mmPerUnit;return [X,Y];});
+  ctx.save();ctx.globalAlpha=.18;ctx.fillStyle=inkFill;ctx.beginPath();
+  for(const it of r.cls.parts){const L=toMMloop(it.loop).map(T);poly(ctx,L);}
+  for(const it of r.cls.holes){const L=toMMloop(it.loop).map(T);poly(ctx,L);}
+  ctx.fill('evenodd');ctx.restore();
+  ctx.save();ctx.globalAlpha=.32;ctx.fillStyle=islFill;for(const it of r.cls.islands){ctx.beginPath();poly(ctx,toMMloop(it.loop).map(T));ctx.fill();}ctx.restore();
+  // stroke cut polylines by role
+  const col={part:css.getPropertyValue('--ink'),hole:css.getPropertyValue('--muted'),island:css.getPropertyValue('--isl'),bridge:css.getPropertyValue('--accent')};
+  for(const pl of r.mm){ctx.beginPath();const P=pl.pts.map(T);poly(ctx,P,!pl.closed);ctx.lineWidth=pl.role==='bridge'?2.5:1.6;ctx.strokeStyle=col[pl.role]||col.part;ctx.stroke();}
+}
+function bbSrcFlip(r){const bb=boundsOf(r.cls.parts.concat(r.cls.holes,r.cls.islands).map(it=>({pts:it.loop})));return bb[1]+bb[3];}
+function poly(ctx,P,openPath){if(!P.length)return;ctx.moveTo(P[0][0],P[0][1]);for(let i=1;i<P.length;i++)ctx.lineTo(P[i][0],P[i][1]);if(!openPath)ctx.closePath();}
+
+/* events */
+fileInput.addEventListener('change',e=>{if(e.target.files[0])onFile(e.target.files[0]);});
+document.querySelectorAll('.chipbtn').forEach(b=>b.addEventListener('click',()=>{
+  if(b.dataset.sample==='svg'){threshWrap.hidden=true;state={kind:'vector',text:SAMPLE_SVG,ext:'svg',name:'stencil_O.svg'};run();}
+  else{const f=makeFaceFile();onFile(f);}
+}));
+[methodSel,thickInput,unitSel,widthInput,threshInput,invertChk].forEach(el=>el.addEventListener('input',()=>{if(state)run();}));
+unitSel.addEventListener('change',()=>{$('#widthLabel').textContent='Design width ('+unitSel.value+')';});
+const drop=$('#drop');
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{if(e.dataTransfer.files[0])onFile(e.dataTransfer.files[0]);});
+
+// synthetic "face with a pupil" raster sample
+function makeFaceFile(){
+  const w=360,h=360,cv=document.createElement('canvas');cv.width=w;cv.height=h;const ctx=cv.getContext('2d');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.fillStyle='#111';
+  ctx.beginPath();ctx.arc(180,180,140,0,7);ctx.fill();                 // head
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(130,150,34,0,7);ctx.arc(230,150,34,0,7);ctx.fill(); // eye whites (holes)
+  ctx.fillStyle='#111';ctx.beginPath();ctx.arc(130,150,12,0,7);ctx.arc(230,150,12,0,7);ctx.fill();  // pupils (islands)
+  ctx.strokeStyle='#111';ctx.lineWidth=10;ctx.beginPath();ctx.arc(180,210,60,0.2*Math.PI,0.8*Math.PI);ctx.stroke(); // smile
+  const data=cv.toDataURL('image/png');const bin=atob(data.split(',')[1]);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+  return new File([arr],'face_sample.png',{type:'image/png'});
+}
+</script>
