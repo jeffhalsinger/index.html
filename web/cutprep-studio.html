@@ -35,8 +35,9 @@
   .card>h2::before{content:"";width:6px;height:6px;background:var(--accent);border-radius:50%;flex:none}
   .drop{border:1.5px dashed var(--line2);border-radius:var(--r);padding:18px 14px;text-align:center;transition:border-color .15s,background .15s}
   .drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
-  .drop input[type=file]{display:none}
-  .filebtn{display:inline-block;background:var(--accent);color:var(--accent-ink);font-weight:600;padding:10px 18px;border-radius:var(--r);cursor:pointer}
+  .drop input[type=file]{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}
+  .drop{cursor:pointer}
+  .filebtn{display:inline-block;background:var(--accent);color:var(--accent-ink);font-weight:600;padding:12px 20px;border-radius:var(--r);cursor:pointer;font-size:1rem}
   .drop .hint{color:var(--muted);font-size:.85rem;margin-top:10px}
   .samples{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
   .samples .lbl{font-family:var(--mono);font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
@@ -113,7 +114,11 @@
       <div class="field"><label for="unit">Units</label><select id="unit"><option value="mm">mm</option><option value="in">inch</option></select></div>
       <div class="field"><label for="width" id="widthLabel">Design width (mm)</label><input id="width" type="number" min="0" step="any" value="100"></div>
       <div class="field wide" id="threshWrap" hidden>
-        <label for="thresh">Threshold <span id="threshVal" class="muted"></span> · <label style="text-transform:none;letter-spacing:0"><input type="checkbox" id="invert"> invert (light shapes)</label></label>
+        <label style="display:flex;gap:16px;flex-wrap:wrap;text-transform:none;letter-spacing:0">
+          <span><input type="checkbox" id="autoclean" checked> Auto-clean image (fix low-contrast / noisy photos)</span>
+          <span><input type="checkbox" id="invert"> Invert (light shapes on dark)</span>
+        </label>
+        <label for="thresh">Threshold <span id="threshVal" class="muted"></span></label>
         <input type="range" id="thresh" min="1" max="254" value="128">
       </div>
     </div>
@@ -297,19 +302,54 @@ const SAMPLE_SVG=`<svg xmlns="http://www.w3.org/2000/svg" width="120mm" height="
 /* =========================================================================
    Image processing
    ========================================================================= */
-function otsu(hist,total){let sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];let sumB=0,wB=0,max=0,thr=128;
+function otsu(gray,total){const hist=new Uint32Array(256);for(let i=0;i<total;i++)hist[Math.min(255,Math.max(0,Math.round(gray[i])))]++;
+  let sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];let sumB=0,wB=0,max=0,thr=128;
   for(let i=0;i<256;i++){wB+=hist[i];if(!wB)continue;const wF=total-wB;if(!wF)break;sumB+=i*hist[i];const mB=sumB/wB,mF=(sum-sumB)/wF;const between=wB*wF*(mB-mF)*(mB-mF);if(between>max){max=between;thr=i;}}return thr;}
+// Contrast normalize by stretching the 2nd..98th percentile to 0..255.
+function normalize(gray,n){const hist=new Uint32Array(256);for(let i=0;i<n;i++)hist[Math.min(255,Math.max(0,Math.round(gray[i])))]++;
+  const loN=n*0.02,hiN=n*0.98;let acc=0,lo=0,hi=255;for(let i=0;i<256;i++){acc+=hist[i];if(acc>=loN){lo=i;break;}}
+  acc=0;for(let i=0;i<256;i++){acc+=hist[i];if(acc>=hiN){hi=i;break;}}
+  if(hi-lo<8)return gray.slice();const out=new Float32Array(n);const sc=255/(hi-lo);for(let i=0;i<n;i++)out[i]=Math.max(0,Math.min(255,(gray[i]-lo)*sc));return out;}
+// median 3x3 to kill salt-and-pepper speckle
+function median3(g,w,h){const out=new Float32Array(w*h);const win=[];for(let y=0;y<h;y++)for(let x=0;x<w;x++){win.length=0;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=Math.min(w-1,Math.max(0,x+dx)),ny=Math.min(h-1,Math.max(0,y+dy));win.push(g[ny*w+nx]);}
+  win.sort((a,b)=>a-b);out[y*w+x]=win[4];}return out;}
+// mean grey of the 1px border -> tells us if the background is light or dark
+function borderMean(g,w,h){let s=0,c=0;for(let x=0;x<w;x++){s+=g[x];s+=g[(h-1)*w+x];c+=2;}for(let y=0;y<h;y++){s+=g[y*w];s+=g[y*w+w-1];c+=2;}return s/c;}
+// binary morphology (square kernel, separable min/max)
+function morph(mask,w,h,r,dilate){const t1=new Uint8Array(w*h),out=new Uint8Array(w*h);const pick=dilate?Math.max:Math.min;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let v=dilate?0:1;for(let dx=-r;dx<=r;dx++){const nx=Math.min(w-1,Math.max(0,x+dx));v=pick(v,mask[y*w+nx]);}t1[y*w+x]=v;}
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let v=dilate?0:1;for(let dy=-r;dy<=r;dy++){const ny=Math.min(h-1,Math.max(0,y+dy));v=pick(v,t1[ny*w+x]);}out[y*w+x]=v;}return out;}
+function boxBlur(g,w,h){const out=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0,c=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=w||ny>=h)continue;s+=g[ny*w+nx];c++;}out[y*w+x]=s/c;}return out;}
 async function imageToGray(file){
   const url=URL.createObjectURL(file);const img=new Image();
-  await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
-  let w=img.naturalWidth,h=img.naturalHeight;const maxSide=900;const sc=Math.min(1,maxSide/Math.max(w,h));w=Math.max(2,Math.round(w*sc));h=Math.max(2,Math.round(h*sc));
+  try{await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('decode'));img.src=url;});}
+  catch(e){URL.revokeObjectURL(url);throw new Error("This image format couldn't be decoded in the browser. iPhone HEIC photos aren't supported — in Photos, use Share → Save as JPG (or set Camera → Formats → Most Compatible) and try again.");}
+  let w=img.naturalWidth,h=img.naturalHeight;
+  const maxSide=1000,minSide=380;let sc=Math.min(1,maxSide/Math.max(w,h));if(Math.max(w,h)*sc<minSide)sc=minSide/Math.max(w,h); // upscale tiny art
+  w=Math.max(2,Math.round(w*sc));h=Math.max(2,Math.round(h*sc));
   const cv=document.createElement('canvas');cv.width=w;cv.height=h;const ctx=cv.getContext('2d',{willReadFrequently:true});
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);URL.revokeObjectURL(url);
-  const d=ctx.getImageData(0,0,w,h).data;const gray=new Float32Array(w*h);const hist=new Uint32Array(256);
-  for(let i=0;i<w*h;i++){const a=d[i*4+3]/255;const g=(0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2])*a+255*(1-a);gray[i]=g;hist[Math.min(255,Math.max(0,Math.round(g)))]++;}
-  // 3x3 box blur to smooth marching squares
-  const bl=new Float32Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0,c=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=w||ny>=h)continue;s+=gray[ny*w+nx];c++;}bl[y*w+x]=s/c;}
-  return {gray:bl,w,h,otsu:otsu(hist,w*h)};
+  ctx.imageSmoothingEnabled=true;ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);URL.revokeObjectURL(url);
+  const d=ctx.getImageData(0,0,w,h).data;const gray=new Float32Array(w*h);
+  for(let i=0;i<w*h;i++){const a=d[i*4+3]/255;gray[i]=(0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2])*a+255*(1-a);}
+  const norm=normalize(gray,w*h);
+  return {gray,w,h,otsu:otsu(norm,w*h)};
+}
+// Build a clean, smooth scalar field for tracing. Returns {field, level, autoDark}.
+function buildField(rawGray,w,h,level,autoclean,invert){
+  let g=autoclean?normalize(rawGray,w*h):rawGray;
+  if(autoclean)g=median3(g,w,h);
+  const bg=borderMean(g,w,h);           // background brightness at the frame
+  const autoDark=bg>=level;             // bright frame => the shape is the darker ink
+  const fgDark=autoDark!==invert;       // invert flips the auto decision
+  let mask=new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++){const isDark=g[i]<level;mask[i]=(fgDark?isDark:!isDark)?1:0;}
+  if(autoclean){const r=Math.max(1,Math.round(Math.min(w,h)/320));
+    mask=morph(morph(mask,w,h,r,false),w,h,r,true);   // open: remove specks
+    mask=morph(morph(mask,w,h,r,true),w,h,r,false);   // close: fill pinholes
+  }
+  const fld=new Float32Array(w*h);for(let i=0;i<w*h;i++)fld[i]=mask[i]?255:0;
+  return {field:boxBlur(fld,w,h),level:127,autoDark};
 }
 
 /* =========================================================================
@@ -317,7 +357,7 @@ async function imageToGray(file){
    ========================================================================= */
 const $=s=>document.querySelector(s);
 const fileInput=$('#file'),methodSel=$('#method'),thickInput=$('#thickness'),unitSel=$('#unit'),widthInput=$('#width'),
-  threshWrap=$('#threshWrap'),threshInput=$('#thresh'),threshVal=$('#threshVal'),invertChk=$('#invert'),resultsEl=$('#results');
+  threshWrap=$('#threshWrap'),threshInput=$('#thresh'),threshVal=$('#threshVal'),invertChk=$('#invert'),autocleanChk=$('#autoclean'),resultsEl=$('#results');
 let state=null; // {kind:'image', gray,w,h, name} | {kind:'vector', loops, open, unit, format, name}
 let urls=[];
 
@@ -343,15 +383,12 @@ function run(){
 
   let loops,mmPerUnit,field=null,w=0,h=0,level=0,openIds=[],fmt,flipH,unitAmbiguous=false;
   if(state.kind==='image'){
-    field=state.gray;w=state.w;h=state.h;level=parseInt(threshInput.value,10);
-    if(invertChk.checked)field=field; // handled below via level polarity
+    w=state.w;h=state.h;
     threshVal.textContent='('+threshInput.value+')';
-    // foreground = dark by default => shape where gray<level. marching squares needs fg high => use (255-gray) unless invert.
-    const fld=new Float32Array(w*h);for(let i=0;i<w*h;i++)fld[i]=invertChk.checked?field[i]:255-field[i];
-    const lv=invertChk.checked?level:255-level;
-    let raw=traceField(fld,w,h,lv).filter(l=>l.length>=6&&area(l)>4);
-    field=fld;level=lv;
-    if(!raw.length){resultsEl.innerHTML='<div class="card"><div class="warnbox"><b>No shapes found at this threshold.</b> Drag the threshold slider, or toggle “invert” if your design is light on a dark background.</div></div>';return;}
+    const bf=buildField(state.gray,w,h,parseInt(threshInput.value,10),autocleanChk.checked,invertChk.checked);
+    field=bf.field;level=bf.level;state.previewField=field;
+    let raw=traceField(field,w,h,level).filter(l=>l.length>=6&&area(l)>3);
+    if(!raw.length){resultsEl.innerHTML='<div class="card"><div class="warnbox"><b>No shapes found.</b> Try the threshold slider, or toggle “Invert” if your art is light on a dark background.</div></div>';return;}
     const bb=boundsOf(raw.map(pts=>({pts})));const bw=(bb[2]-bb[0])||1;
     const targetMm=parseFloat(widthInput.value)||100;mmPerUnit=targetMm/bw;
     const eps=simplifyMm/mmPerUnit;loops=raw.map(l=>rdpClosed(l,eps)).filter(l=>l.length>=3);
@@ -432,8 +469,8 @@ function fitTransform(cv,bb,pad){const [a,b,c,d]=bb;const gw=(c-a)||1,gh=(d-b)||
   return {s,ox:(W-gw*s)/2-a*s,oy:(H-gh*s)/2-b*s};}
 function drawSource(cv){cv.width=520;cv.height=420;const ctx=cv.getContext('2d');const css=getComputedStyle(document.documentElement);
   ctx.fillStyle=css.getPropertyValue('--panel');ctx.fillRect(0,0,cv.width,cv.height);
-  if(state.kind==='image'){const {gray,w,h}=state;const off=document.createElement('canvas');off.width=w;off.height=h;const octx=off.getContext('2d');const img=octx.createImageData(w,h);
-    for(let i=0;i<w*h;i++){const v=Math.max(0,Math.min(255,gray[i]));img.data[i*4]=img.data[i*4+1]=img.data[i*4+2]=v;img.data[i*4+3]=255;}
+  if(state.kind==='image'){const {w,h}=state;const src=state.previewField||state.gray;const off=document.createElement('canvas');off.width=w;off.height=h;const octx=off.getContext('2d');const img=octx.createImageData(w,h);
+    for(let i=0;i<w*h;i++){const v=Math.max(0,Math.min(255,src[i]));img.data[i*4]=img.data[i*4+1]=img.data[i*4+2]=v;img.data[i*4+3]=255;}
     octx.putImageData(img,0,0);const s=Math.min(cv.width/w,cv.height/h);const dw=w*s,dh=h*s;ctx.drawImage(off,(cv.width-dw)/2,(cv.height-dh)/2,dw,dh);}
   else{ctx.fillStyle=css.getPropertyValue('--muted');ctx.font='13px monospace';ctx.textAlign='center';ctx.fillText(state.ext.toUpperCase()+' vector source',cv.width/2,cv.height/2);}
 }
@@ -464,9 +501,12 @@ document.querySelectorAll('.chipbtn').forEach(b=>b.addEventListener('click',()=>
   if(b.dataset.sample==='svg'){threshWrap.hidden=true;state={kind:'vector',text:SAMPLE_SVG,ext:'svg',name:'stencil_O.svg'};run();}
   else{const f=makeFaceFile();onFile(f);}
 }));
-[methodSel,thickInput,unitSel,widthInput,threshInput,invertChk].forEach(el=>el.addEventListener('input',()=>{if(state)run();}));
+[methodSel,thickInput,unitSel,widthInput,threshInput,invertChk,autocleanChk].forEach(el=>el.addEventListener('input',()=>{if(state)run();}));
 unitSel.addEventListener('change',()=>{$('#widthLabel').textContent='Design width ('+unitSel.value+')';});
 const drop=$('#drop');
+// tap anywhere on the drop zone opens the picker (robust on mobile where the hidden input alone fails).
+// The label already opens it, so skip when the label/input was the direct target to avoid a double prompt.
+drop.addEventListener('click',e=>{if(e.target.closest('label')||e.target===fileInput)return;fileInput.click();});
 ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
 drop.addEventListener('drop',e=>{if(e.dataTransfer.files[0])onFile(e.dataTransfer.files[0]);});
