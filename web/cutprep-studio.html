@@ -37,7 +37,9 @@
   .drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
   .drop input[type=file]{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}
   .drop{cursor:pointer}
+  .dropbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
   .filebtn{display:inline-block;background:var(--accent);color:var(--accent-ink);font-weight:600;padding:12px 20px;border-radius:var(--r);cursor:pointer;font-size:1rem}
+  .filebtn.cam{background:var(--panel);color:var(--ink);border:1px solid var(--line2)}
   .drop .hint{color:var(--muted);font-size:.85rem;margin-top:10px}
   .samples{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
   .samples .lbl{font-family:var(--mono);font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
@@ -93,9 +95,13 @@
   <section class="card">
     <h2>1 · Load a file</h2>
     <div class="drop" id="drop">
-      <label class="filebtn" for="file">Choose image / SVG / DXF</label>
+      <div class="dropbtns">
+        <label class="filebtn" for="file">Choose file</label>
+        <label class="filebtn cam" for="camera">Take photo</label>
+      </div>
       <input type="file" id="file" accept=".png,.jpg,.jpeg,.bmp,.gif,.webp,.svg,.dxf,image/*">
-      <div class="hint">or drag a file here — PNG · JPG · SVG · DXF</div>
+      <input type="file" id="camera" accept="image/*" capture="environment">
+      <div class="hint">image · SVG · DXF — or paste / drag one in</div>
     </div>
     <div class="samples"><span class="lbl">Try a sample</span>
       <button class="chipbtn" data-sample="face">Face (image, has a pupil)</button>
@@ -497,6 +503,10 @@ function poly(ctx,P,openPath){if(!P.length)return;ctx.moveTo(P[0][0],P[0][1]);fo
 
 /* events */
 fileInput.addEventListener('change',e=>{if(e.target.files[0])onFile(e.target.files[0]);});
+const cameraInput=$('#camera');
+if(cameraInput)cameraInput.addEventListener('change',e=>{if(e.target.files[0])onFile(e.target.files[0]);});
+// paste an image from the clipboard (desktop + some mobile)
+window.addEventListener('paste',e=>{const items=(e.clipboardData||{}).items||[];for(const it of items){if(it.type&&it.type.startsWith('image/')){const f=it.getAsFile();if(f){onFile(f);e.preventDefault();return;}}}});
 document.querySelectorAll('.chipbtn').forEach(b=>b.addEventListener('click',()=>{
   if(b.dataset.sample==='svg'){threshWrap.hidden=true;state={kind:'vector',text:SAMPLE_SVG,ext:'svg',name:'stencil_O.svg'};run();}
   else{const f=makeFaceFile();onFile(f);}
