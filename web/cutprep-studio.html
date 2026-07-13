@@ -120,19 +120,25 @@
       <div class="field"><label for="unit">Units</label><select id="unit"><option value="mm">mm</option><option value="in">inch</option></select></div>
       <div class="field"><label for="width" id="widthLabel">Design width (mm)</label><input id="width" type="number" min="0" step="any" value="100"></div>
       <div class="field wide" id="threshWrap" hidden>
-        <label style="display:flex;gap:16px;flex-wrap:wrap;text-transform:none;letter-spacing:0">
-          <span><input type="checkbox" id="silhouette" checked> Silhouette mode (fill line art / photos into one solid shape)</span>
-          <span><input type="checkbox" id="autoclean" checked> Auto-clean</span>
-          <span><input type="checkbox" id="invert"> Invert (light shapes on dark)</span>
-        </label>
+        <div class="row" style="gap:18px;flex-wrap:wrap;align-items:end">
+          <div style="flex:1;min-width:220px">
+            <label for="mode">Trace style</label>
+            <select id="mode">
+              <option value="stencil" selected>Stencil — keep detail (recognizable)</option>
+              <option value="silhouette">Silhouette — solid shape</option>
+              <option value="linework">Line art — as drawn</option>
+            </select>
+          </div>
+          <label style="text-transform:none;letter-spacing:0;flex:none"><input type="checkbox" id="invert"> Invert (light on dark)</label>
+        </div>
         <div class="row" style="gap:18px;flex-wrap:wrap">
           <div style="flex:1;min-width:180px">
             <label for="thresh">Threshold <span id="threshVal" class="muted"></span></label>
             <input type="range" id="thresh" min="1" max="254" value="128">
           </div>
           <div style="flex:1;min-width:180px" id="fillWrap">
-            <label for="fill">Fill detail <span id="fillVal" class="muted"></span></label>
-            <input type="range" id="fill" min="0" max="100" value="55">
+            <label for="fill" id="fillLabel">Detail kept <span id="fillVal" class="muted"></span></label>
+            <input type="range" id="fill" min="0" max="100" value="88">
           </div>
         </div>
       </div>
@@ -218,7 +224,9 @@ function multiGap(loop,centers,gap){const closed=loop.concat([loop[0]]),cum=[0];
   if(cur.length>=2)arcs.push(cur);return arcs;}
 function buildCut(cls,params){
   const {items,parts,holes,islands}=cls;const polylines=[];const stats={tabs:0,bridges:0};const gappedHoles=new Map();
-  for(const isl of islands){const holeItem=items.find(o=>o.i===isl.parent);
+  for(const isl of islands){
+    if(params.minIslandU&&maxDim(isl.loop)<params.minIslandU)continue; // too small to hold -> let it cut away
+    const holeItem=items.find(o=>o.i===isl.parent);
     if(!holeItem){polylines.push({pts:isl.loop.concat([isl.loop[0]]),closed:true,role:'island'});continue;}
     const np=nearestPoints(isl.loop,holeItem.loop);const small=maxDim(isl.loop)<params.doubleIslandU;const pairs=[np];
     if(!small){const far=isl.loop.reduce((m,p)=>dist(p,np.pa)>dist(m,np.pa)?p:m,isl.loop[0]);let hb=holeItem.loop[0],bd=Infinity;for(const q of holeItem.loop){const d=dist(q,far);if(d<bd){bd=d;hb=q;}}pairs.push({pa:far,pb:hb});}
@@ -374,27 +382,56 @@ function keepLargeFg(mask,w,h,minArea){const c=components(mask,w,h,1);const keep
   const out=new Uint8Array(w*h);for(let i=0;i<w*h;i++)if(mask[i]===1&&keep[c.labels[i]])out[i]=1;return out;}
 
 // Build a clean, smooth scalar field for tracing. Returns {field, level}.
-function buildField(rawGray,w,h,level,autoclean,invert,silhouette,strength){
-  let g=(autoclean||silhouette)?normalize(rawGray,w*h):rawGray;
-  if(autoclean||silhouette)g=median3(g,w,h);
+//  mode: 'stencil'  -> solid subject with interior dark detail cut out (recognizable)
+//        'silhouette' -> subject filled to one solid shape
+//        'linework' -> raw threshold, lightly cleaned (as drawn)
+function buildField(rawGray,w,h,level,mode,invert,detail){
+  const clean=mode!=='linework';
+  let g=clean?median3(normalize(rawGray,w*h),w,h):rawGray;
   const bg=borderMean(g,w,h);           // background brightness at the frame
   const autoDark=bg>=level;             // bright frame => the shape is the darker ink
   const fgDark=autoDark!==invert;       // invert flips the auto decision
+  const area=w*h,mn=Math.min(w,h),d=(detail==null?55:detail)/100;
   let mask=new Uint8Array(w*h);
   for(let i=0;i<w*h;i++){const isDark=g[i]<level;mask[i]=(fgDark?isDark:!isDark)?1:0;}
-  const area=w*h;
-  if(silhouette){
-    const s=(strength==null?55:strength)/100;
-    const r=Math.max(1,Math.round(Math.min(w,h)/300*(0.4+s*1.4)));   // merge distance
-    mask=morph(morph(mask,w,h,r,true),w,h,r,false);                  // close: bind strokes together
-    mask=fillHoles(mask,w,h,area*(0.01+s*0.30));                     // fill interior detail (faces, shirts…)
-    mask=keepLargeFg(mask,w,h,area*0.004);                           // drop detached specks
-    mask=morph(morph(mask,w,h,r,false),w,h,r,true);                  // open: clean the outline
-    mask=fillHoles(mask,w,h,area*(0.01+s*0.30));
-  }else if(autoclean){const r=Math.max(1,Math.round(Math.min(w,h)/320));
-    mask=morph(morph(mask,w,h,r,false),w,h,r,true);   // open: remove specks
-    mask=morph(morph(mask,w,h,r,true),w,h,r,false);   // close: fill pinholes
+
+  if(mode==='silhouette'){
+    const r=Math.max(1,Math.round(mn/300*(0.4+d*1.4)));
+    mask=morph(morph(mask,w,h,r,true),w,h,r,false);
+    mask=fillHoles(mask,w,h,area*(0.01+d*0.30));
+    mask=keepLargeFg(mask,w,h,area*0.004);
+    mask=morph(morph(mask,w,h,r,false),w,h,r,true);
+    mask=fillHoles(mask,w,h,area*(0.01+d*0.30));
+  }else if(mode==='stencil'){
+    // 1) solid subject = everything distinct from the background (not just the dark ink),
+    //    so the whole figure is one body — then close gaps and fill every interior hole.
+    const subjLevel=fgDark?bg*0.92:Math.min(255,bg*1.08);
+    let subj=new Uint8Array(w*h);
+    for(let i=0;i<w*h;i++)subj[i]=(fgDark?g[i]<subjLevel:g[i]>subjLevel)?1:0;
+    const rc=Math.max(1,Math.round(mn/320));
+    subj=morph(morph(subj,w,h,rc,true),w,h,rc,false);
+    subj=fillHoles(subj,w,h,area);                 // fill ALL interior -> one solid body
+    subj=keepLargeFg(subj,w,h,area*0.002);
+    // 2) interior detail = the strongest ink, thickened so it cuts cleanly
+    const dl=fgDark? (level*(0.35+d*0.45)) : 255-(level*(0.35+d*0.45));
+    let det=new Uint8Array(w*h);
+    for(let i=0;i<w*h;i++)det[i]=(fgDark? g[i]<dl : g[i]>dl)?1:0;
+    const rt=Math.max(1,Math.round(mn/600));
+    det=morph(det,w,h,rt,true);                    // thicken lines toward min feature
+    det=keepLargeFg(det,w,h,area*0.00006);         // drop detail specks
+    // 3) confine detail to the interior so a solid rim keeps everything ONE connected
+    //    piece — detail cuts that reached the edge would otherwise sever the body.
+    const marginR=Math.max(2,Math.round(mn/110));
+    const inner=morph(subj,w,h,marginR,false);     // erode: interior zone
+    for(let i=0;i<w*h;i++)if(!inner[i])det[i]=0;
+    // 4) keep = subject minus interior detail (detail becomes interior cut-outs)
+    mask=new Uint8Array(w*h);
+    for(let i=0;i<w*h;i++)mask[i]=(subj[i]&&!det[i])?1:0;
+    mask=keepLargeFg(mask,w,h,area*0.00008);
+  }else{ // linework
+    mask=morph(morph(mask,w,h,1,false),w,h,1,true);
   }
+
   // Force a background frame so shapes touching the image edge still close into
   // a traceable contour (an open edge-contour would be discarded).
   const bwid=2;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(x<bwid||y<bwid||x>=w-bwid||y>=h-bwid)mask[y*w+x]=0;
@@ -407,8 +444,8 @@ function buildField(rawGray,w,h,level,autoclean,invert,silhouette,strength){
    ========================================================================= */
 const $=s=>document.querySelector(s);
 const fileInput=$('#file'),methodSel=$('#method'),thickInput=$('#thickness'),unitSel=$('#unit'),widthInput=$('#width'),
-  threshWrap=$('#threshWrap'),threshInput=$('#thresh'),threshVal=$('#threshVal'),invertChk=$('#invert'),autocleanChk=$('#autoclean'),
-  silhouetteChk=$('#silhouette'),fillInput=$('#fill'),fillVal=$('#fillVal'),resultsEl=$('#results');
+  threshWrap=$('#threshWrap'),threshInput=$('#thresh'),threshVal=$('#threshVal'),invertChk=$('#invert'),
+  modeSel=$('#mode'),fillInput=$('#fill'),fillVal=$('#fillVal'),fillLabel=$('#fillLabel'),resultsEl=$('#results');
 let state=null; // {kind:'image', gray,w,h, name} | {kind:'vector', loops, open, unit, format, name}
 let urls=[];
 
@@ -437,7 +474,8 @@ function run(){
     w=state.w;h=state.h;
     threshVal.textContent='('+threshInput.value+')';
     fillVal.textContent='('+fillInput.value+'%)';
-    const bf=buildField(state.gray,w,h,parseInt(threshInput.value,10),autocleanChk.checked,invertChk.checked,silhouetteChk.checked,parseInt(fillInput.value,10));
+    fillLabel.firstChild.textContent=(modeSel.value==='silhouette'?'Fill amount ':'Detail kept ');
+    const bf=buildField(state.gray,w,h,parseInt(threshInput.value,10),modeSel.value,invertChk.checked,parseInt(fillInput.value,10));
     field=bf.field;level=bf.level;state.previewField=field;
     let raw=traceField(field,w,h,level).filter(l=>l.length>=6&&area(l)>3);
     if(!raw.length){resultsEl.innerHTML='<div class="card"><div class="warnbox"><b>No shapes found.</b> Try the threshold slider, or toggle “Invert” if your art is light on a dark background.</div></div>';return;}
@@ -457,7 +495,11 @@ function run(){
   }
 
   const cls=classify(loops,field,w,h,level);
-  const params={bridgeW:bridgeMm/mmPerUnit,tabW:tabMm/mmPerUnit,tabEveryU:90/mmPerUnit,doubleIslandU:(8*thickMm)/mmPerUnit,minFeatureU:minFeatureMm/mmPerUnit};
+  let minIslandU=(minFeatureMm*1.5)/mmPerUnit;
+  // Stencil mode over-produces small interior islands; keep only substantial detail so the
+  // cut isn't a web of bridges. Everything smaller just cuts away.
+  if(state.kind==='image'&&modeSel.value==='stencil')minIslandU=Math.max(minIslandU,0.022*Math.min(w,h));
+  const params={bridgeW:bridgeMm/mmPerUnit,tabW:tabMm/mmPerUnit,tabEveryU:90/mmPerUnit,doubleIslandU:(8*thickMm)/mmPerUnit,minFeatureU:minFeatureMm/mmPerUnit,minIslandU};
   const cut=buildCut(cls,params);
   const mm=toMM(cut.polylines,mmPerUnit,flipH);
   const svg=exportSVG(mm),dxf=exportDXF(mm,unitSel.value);
@@ -555,7 +597,7 @@ document.querySelectorAll('.chipbtn').forEach(b=>b.addEventListener('click',()=>
   if(b.dataset.sample==='svg'){threshWrap.hidden=true;state={kind:'vector',text:SAMPLE_SVG,ext:'svg',name:'stencil_O.svg'};run();}
   else{const f=makeFaceFile();onFile(f);}
 }));
-[methodSel,thickInput,unitSel,widthInput,threshInput,invertChk,autocleanChk,silhouetteChk,fillInput].forEach(el=>el.addEventListener('input',()=>{if(state)run();}));
+[methodSel,thickInput,unitSel,widthInput,threshInput,invertChk,modeSel,fillInput].forEach(el=>el.addEventListener('input',()=>{if(state)run();}));
 unitSel.addEventListener('change',()=>{$('#widthLabel').textContent='Design width ('+unitSel.value+')';});
 const drop=$('#drop');
 // tap anywhere on the drop zone opens the picker (robust on mobile where the hidden input alone fails).
