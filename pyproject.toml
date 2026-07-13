@@ -23,6 +23,14 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.5",
 ]
+api = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "python-multipart>=0.0.9",
+    "opencv-python-headless>=4.9",
+    "ezdxf>=1.1",
+    "numpy>=1.24",
+]
 
 [project.urls]
 Homepage = "https://github.com/jeffhalsinger/index.html"
