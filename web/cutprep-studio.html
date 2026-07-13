@@ -121,11 +121,20 @@
       <div class="field"><label for="width" id="widthLabel">Design width (mm)</label><input id="width" type="number" min="0" step="any" value="100"></div>
       <div class="field wide" id="threshWrap" hidden>
         <label style="display:flex;gap:16px;flex-wrap:wrap;text-transform:none;letter-spacing:0">
-          <span><input type="checkbox" id="autoclean" checked> Auto-clean image (fix low-contrast / noisy photos)</span>
+          <span><input type="checkbox" id="silhouette" checked> Silhouette mode (fill line art / photos into one solid shape)</span>
+          <span><input type="checkbox" id="autoclean" checked> Auto-clean</span>
           <span><input type="checkbox" id="invert"> Invert (light shapes on dark)</span>
         </label>
-        <label for="thresh">Threshold <span id="threshVal" class="muted"></span></label>
-        <input type="range" id="thresh" min="1" max="254" value="128">
+        <div class="row" style="gap:18px;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <label for="thresh">Threshold <span id="threshVal" class="muted"></span></label>
+            <input type="range" id="thresh" min="1" max="254" value="128">
+          </div>
+          <div style="flex:1;min-width:180px" id="fillWrap">
+            <label for="fill">Fill detail <span id="fillVal" class="muted"></span></label>
+            <input type="range" id="fill" min="0" max="100" value="55">
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -233,11 +242,12 @@ function exportSVG(mm){const [a,b,c,d]=boundsOf(mm),pad=2,W=(c-a)+2*pad,H=(d-b)+
   const paths=mm.map(pl=>`<path d="${path(pl)}" fill="none" stroke="#000" stroke-width="0.1"/>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(3)}mm" height="${H.toFixed(3)}mm" viewBox="0 0 ${W.toFixed(3)} ${H.toFixed(3)}">\n${paths}\n</svg>\n`;}
 // R12 POLYLINE output — no subclass markers/handles required, read by every CAM tool.
-function exportDXF(mm,unitName){const insunits=unitName==='in'?1:4,div=unitName==='in'?MM_PER_INCH:1,[a,b]=boundsOf(mm);
+// Geometry is screen-native (y-down); DXF is y-up, so flip Y here (d - y).
+function exportDXF(mm,unitName){const insunits=unitName==='in'?1:4,div=unitName==='in'?MM_PER_INCH:1,[a,b,c,d]=boundsOf(mm);
   const out=['0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70',String(insunits),'0','ENDSEC','0','SECTION','2','ENTITIES'];
   for(const pl of mm){
     out.push('0','POLYLINE','8','CUT','66','1','70',pl.closed?'1':'0');
-    for(const [x,y] of pl.pts)out.push('0','VERTEX','8','CUT','10',((x-a)/div).toFixed(4),'20',((y-b)/div).toFixed(4));
+    for(const [x,y] of pl.pts)out.push('0','VERTEX','8','CUT','10',((x-a)/div).toFixed(4),'20',((d-y)/div).toFixed(4));
     out.push('0','SEQEND');
   }
   out.push('0','ENDSEC','0','EOF');return out.join('\n')+'\n';}
@@ -341,21 +351,55 @@ async function imageToGray(file){
   const norm=normalize(gray,w*h);
   return {gray,w,h,otsu:otsu(norm,w*h)};
 }
-// Build a clean, smooth scalar field for tracing. Returns {field, level, autoDark}.
-function buildField(rawGray,w,h,level,autoclean,invert){
-  let g=autoclean?normalize(rawGray,w*h):rawGray;
-  if(autoclean)g=median3(g,w,h);
+// Connected components (4-connectivity) of pixels equal to `target`.
+function components(mask,w,h,target){
+  const labels=new Int32Array(w*h);const sizes=[0],border=[false];let cur=0;const stack=[];
+  for(let i=0;i<w*h;i++){if(mask[i]!==target||labels[i]!==0)continue;cur++;sizes.push(0);border.push(false);
+    stack.length=0;stack.push(i);labels[i]=cur;
+    while(stack.length){const p=stack.pop();const x=p%w,y=(p-x)/w;sizes[cur]++;
+      if(x===0||y===0||x===w-1||y===h-1)border[cur]=true;
+      if(x>0&&mask[p-1]===target&&labels[p-1]===0){labels[p-1]=cur;stack.push(p-1);}
+      if(x<w-1&&mask[p+1]===target&&labels[p+1]===0){labels[p+1]=cur;stack.push(p+1);}
+      if(y>0&&mask[p-w]===target&&labels[p-w]===0){labels[p-w]=cur;stack.push(p-w);}
+      if(y<h-1&&mask[p+w]===target&&labels[p+w]===0){labels[p+w]=cur;stack.push(p+w);}}}
+  return {labels,sizes,border,count:cur};
+}
+// Fill interior background holes smaller than maxArea (keep large negative spaces + border background).
+function fillHoles(mask,w,h,maxArea){const c=components(mask,w,h,0);const fill=new Uint8Array(c.count+1);
+  for(let k=1;k<=c.count;k++)if(!c.border[k]&&c.sizes[k]<=maxArea)fill[k]=1;
+  const out=mask.slice();for(let i=0;i<w*h;i++)if(mask[i]===0&&fill[c.labels[i]])out[i]=1;return out;}
+// Keep only foreground blobs at/above minArea (drop detached specks/lines).
+function keepLargeFg(mask,w,h,minArea){const c=components(mask,w,h,1);const keep=new Uint8Array(c.count+1);
+  for(let k=1;k<=c.count;k++)if(c.sizes[k]>=minArea)keep[k]=1;
+  const out=new Uint8Array(w*h);for(let i=0;i<w*h;i++)if(mask[i]===1&&keep[c.labels[i]])out[i]=1;return out;}
+
+// Build a clean, smooth scalar field for tracing. Returns {field, level}.
+function buildField(rawGray,w,h,level,autoclean,invert,silhouette,strength){
+  let g=(autoclean||silhouette)?normalize(rawGray,w*h):rawGray;
+  if(autoclean||silhouette)g=median3(g,w,h);
   const bg=borderMean(g,w,h);           // background brightness at the frame
   const autoDark=bg>=level;             // bright frame => the shape is the darker ink
   const fgDark=autoDark!==invert;       // invert flips the auto decision
   let mask=new Uint8Array(w*h);
   for(let i=0;i<w*h;i++){const isDark=g[i]<level;mask[i]=(fgDark?isDark:!isDark)?1:0;}
-  if(autoclean){const r=Math.max(1,Math.round(Math.min(w,h)/320));
+  const area=w*h;
+  if(silhouette){
+    const s=(strength==null?55:strength)/100;
+    const r=Math.max(1,Math.round(Math.min(w,h)/300*(0.4+s*1.4)));   // merge distance
+    mask=morph(morph(mask,w,h,r,true),w,h,r,false);                  // close: bind strokes together
+    mask=fillHoles(mask,w,h,area*(0.01+s*0.30));                     // fill interior detail (faces, shirts…)
+    mask=keepLargeFg(mask,w,h,area*0.004);                           // drop detached specks
+    mask=morph(morph(mask,w,h,r,false),w,h,r,true);                  // open: clean the outline
+    mask=fillHoles(mask,w,h,area*(0.01+s*0.30));
+  }else if(autoclean){const r=Math.max(1,Math.round(Math.min(w,h)/320));
     mask=morph(morph(mask,w,h,r,false),w,h,r,true);   // open: remove specks
     mask=morph(morph(mask,w,h,r,true),w,h,r,false);   // close: fill pinholes
   }
+  // Force a background frame so shapes touching the image edge still close into
+  // a traceable contour (an open edge-contour would be discarded).
+  const bwid=2;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(x<bwid||y<bwid||x>=w-bwid||y>=h-bwid)mask[y*w+x]=0;
   const fld=new Float32Array(w*h);for(let i=0;i<w*h;i++)fld[i]=mask[i]?255:0;
-  return {field:boxBlur(fld,w,h),level:127,autoDark};
+  return {field:boxBlur(fld,w,h),level:127};
 }
 
 /* =========================================================================
@@ -363,7 +407,8 @@ function buildField(rawGray,w,h,level,autoclean,invert){
    ========================================================================= */
 const $=s=>document.querySelector(s);
 const fileInput=$('#file'),methodSel=$('#method'),thickInput=$('#thickness'),unitSel=$('#unit'),widthInput=$('#width'),
-  threshWrap=$('#threshWrap'),threshInput=$('#thresh'),threshVal=$('#threshVal'),invertChk=$('#invert'),autocleanChk=$('#autoclean'),resultsEl=$('#results');
+  threshWrap=$('#threshWrap'),threshInput=$('#thresh'),threshVal=$('#threshVal'),invertChk=$('#invert'),autocleanChk=$('#autoclean'),
+  silhouetteChk=$('#silhouette'),fillInput=$('#fill'),fillVal=$('#fillVal'),resultsEl=$('#results');
 let state=null; // {kind:'image', gray,w,h, name} | {kind:'vector', loops, open, unit, format, name}
 let urls=[];
 
@@ -391,23 +436,24 @@ function run(){
   if(state.kind==='image'){
     w=state.w;h=state.h;
     threshVal.textContent='('+threshInput.value+')';
-    const bf=buildField(state.gray,w,h,parseInt(threshInput.value,10),autocleanChk.checked,invertChk.checked);
+    fillVal.textContent='('+fillInput.value+'%)';
+    const bf=buildField(state.gray,w,h,parseInt(threshInput.value,10),autocleanChk.checked,invertChk.checked,silhouetteChk.checked,parseInt(fillInput.value,10));
     field=bf.field;level=bf.level;state.previewField=field;
     let raw=traceField(field,w,h,level).filter(l=>l.length>=6&&area(l)>3);
     if(!raw.length){resultsEl.innerHTML='<div class="card"><div class="warnbox"><b>No shapes found.</b> Try the threshold slider, or toggle “Invert” if your art is light on a dark background.</div></div>';return;}
     const bb=boundsOf(raw.map(pts=>({pts})));const bw=(bb[2]-bb[0])||1;
-    const targetMm=parseFloat(widthInput.value)||100;mmPerUnit=targetMm/bw;
+    const targetW=parseFloat(widthInput.value)||100;const targetMm=unitSel.value==='in'?targetW*MM_PER_INCH:targetW;mmPerUnit=targetMm/bw;
     const eps=simplifyMm/mmPerUnit;loops=raw.map(l=>rdpClosed(l,eps)).filter(l=>l.length>=3);
-    fmt='image';flipH=h;
+    fmt='image';flipH=undefined;   // geometry stays screen-native (y-down)
   }else{
     const parsed=state.ext==='svg'?parseSVG(state.text,simplifyMm/2):parseDXF(state.text,simplifyMm/2);
     if(parsed.err){resultsEl.innerHTML=`<div class="card"><div class="warnbox"><b>${esc(parsed.err)}</b></div></div>`;return;}
     mmPerUnit=parsed.unit.mmPerUnit;unitAmbiguous=parsed.unit.ambiguous;openIds=parsed.open;fmt=parsed.format;
     const eps=simplifyMm/mmPerUnit;loops=parsed.loops.map(l=>rdpClosed(l,eps)).filter(l=>l.length>=3);
     if(!loops.length){resultsEl.innerHTML='<div class="card"><div class="warnbox"><b>No closed shapes found.</b>'+(openIds.length?' The file has only open paths — they can’t become cut parts.':'')+'</div></div>';return;}
-    flipH=fmt==='svg'?boundsOf(loops.map(pts=>({pts})))[3]+boundsOf(loops.map(pts=>({pts})))[1]:undefined;
-    // simpler flip for svg: mirror around its own height
-    if(fmt==='svg'){const bb=boundsOf(loops.map(pts=>({pts})));flipH=bb[1]+bb[3];}else flipH=undefined;
+    // DXF is y-up; flip to canonical screen-native (y-down) so preview/SVG/DXF all agree.
+    if(fmt==='dxf'){const bb=boundsOf(loops.map(pts=>({pts})));const my=bb[1]+bb[3];loops=loops.map(l=>l.map(([x,y])=>[x,my-y]));}
+    flipH=undefined;
   }
 
   const cls=classify(loops,field,w,h,level);
@@ -485,10 +531,8 @@ function drawPlan(cv,r){cv.width=520;cv.height=420;const ctx=cv.getContext('2d')
   const bb=boundsOf(r.mm);const tf=fitTransform(cv,bb,24);const T=([x,y])=>[tf.ox+x*tf.s,tf.oy+y*tf.s];
   // fill keep region: parts with holes (even-odd), then islands
   const inkFill=css.getPropertyValue('--ink'),islFill=css.getPropertyValue('--isl');
-  // Draw filled keep using original loops mapped to mm too is complex; approximate fill from mm closed part/hole polylines
-  const parts=r.mm.filter(p=>p.role==='part');const holes=r.mm.filter(p=>p.role==='hole');
-  // (fill is approximate: source loops, not gapped) — build from classify loops in mm
-  const toMMloop=loop=>loop.map(([x,y])=>{const X=x*r.mmPerUnit,Y=(state.kind==='image'||r.fmt==='svg')?((r.fmt==='svg'?(bbSrcFlip(r)):state.h)-y)*r.mmPerUnit:y*r.mmPerUnit;return [X,Y];});
+  // Geometry is screen-native (y-down) for every source, so loops map to mm with a plain scale.
+  const toMMloop=loop=>loop.map(([x,y])=>[x*r.mmPerUnit,y*r.mmPerUnit]);
   ctx.save();ctx.globalAlpha=.18;ctx.fillStyle=inkFill;ctx.beginPath();
   for(const it of r.cls.parts){const L=toMMloop(it.loop).map(T);poly(ctx,L);}
   for(const it of r.cls.holes){const L=toMMloop(it.loop).map(T);poly(ctx,L);}
@@ -511,7 +555,7 @@ document.querySelectorAll('.chipbtn').forEach(b=>b.addEventListener('click',()=>
   if(b.dataset.sample==='svg'){threshWrap.hidden=true;state={kind:'vector',text:SAMPLE_SVG,ext:'svg',name:'stencil_O.svg'};run();}
   else{const f=makeFaceFile();onFile(f);}
 }));
-[methodSel,thickInput,unitSel,widthInput,threshInput,invertChk,autocleanChk].forEach(el=>el.addEventListener('input',()=>{if(state)run();}));
+[methodSel,thickInput,unitSel,widthInput,threshInput,invertChk,autocleanChk,silhouetteChk,fillInput].forEach(el=>el.addEventListener('input',()=>{if(state)run();}));
 unitSel.addEventListener('change',()=>{$('#widthLabel').textContent='Design width ('+unitSel.value+')';});
 const drop=$('#drop');
 // tap anywhere on the drop zone opens the picker (robust on mobile where the hidden input alone fails).
