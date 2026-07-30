@@ -1,0 +1,16 @@
+{
+  "name": "ai-mechanic-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend for the AI Mechanic app. Keeps the Anthropic and YouTube API keys off the phone.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node test/selftest.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0"
+  }
+}
