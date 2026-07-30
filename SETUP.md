@@ -179,7 +179,7 @@ After about a minute you should see something like:
 2/2  Finding video clips for those steps (uses your YouTube key)...
      searched 5 videos
      matched 6 of 8 steps to a clip
-       step 1: dQw4w9WgXcQ @ 42s (high)
+       step 1: <video-id> @ 42s (high)
        ...
      PASS
 ```
@@ -187,6 +187,41 @@ After about a minute you should see something like:
 **If both say PASS, everything works.** The script tells you exactly which key is at
 fault if one fails. Matching 6 of 8 steps is a normal, good result — not every step
 appears clearly in every video.
+
+---
+
+## Optional shortcut — try it on your phone now, without building an APK
+
+Building the APK takes 15–20 minutes of waiting. If you just want to *see it working*
+first, **Expo Go** runs the real app on your phone over wifi in about five minutes.
+Video playback and everything else works; the only catch is that your computer has to
+stay on and on the same wifi.
+
+1. Copy `ai-mechanic/.env.example` to a new file called `ai-mechanic/.env`
+2. Open that new `.env` file and put your server address in it, so it reads:
+   ```
+   EXPO_PUBLIC_API_URL=https://your-address.vercel.app
+   ```
+3. On your phone, install **Expo Go** from the Play Store
+4. On your computer:
+   ```
+   cd ai-mechanic
+   ```
+   ```
+   npm install
+   ```
+   ```
+   npx expo start
+   ```
+5. A QR code appears in the terminal. Open Expo Go on your phone and scan it.
+
+The app loads straight onto your phone. Press `Ctrl+C` in the terminal when you're done.
+
+When you're happy with it, carry on to Parts 4 and 5 below to build the real APK — that
+version keeps working with your computer switched off.
+
+> The `.env` file is only used by `npx expo start`. The APK build reads the address from
+> `eas.json` instead, which is why Part 4 exists.
 
 ---
 
