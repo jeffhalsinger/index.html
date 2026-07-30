@@ -107,11 +107,24 @@ console.log('\nrequest validation');
 const { default: guideHandler } = await import('../api/guide.js');
 const { default: videosHandler } = await import('../api/videos.js');
 
-await check('guide rejects a missing model field', async () => {
+await check('guide rejects an empty request', async () => {
   const res = fakeRes();
-  await guideHandler({ method: 'POST', body: { year: '2014', make: 'Honda', repair: 'brakes' } }, res);
+  await guideHandler({ method: 'POST', body: { request: '   ' } }, res);
   assert.equal(res.statusCode, 400);
-  assert.match(res.body.error, /year, make, model/);
+  assert.match(res.body.error, /what vehicle/i);
+});
+
+await check('guide rejects a missing body', async () => {
+  const res = fakeRes();
+  await guideHandler({ method: 'POST', body: {} }, res);
+  assert.equal(res.statusCode, 400);
+});
+
+await check('guide rejects an absurdly long request', async () => {
+  const res = fakeRes();
+  await guideHandler({ method: 'POST', body: { request: 'a'.repeat(2001) } }, res);
+  assert.equal(res.statusCode, 400);
+  assert.match(res.body.error, /very long/i);
 });
 
 await check('guide answers CORS preflight', async () => {

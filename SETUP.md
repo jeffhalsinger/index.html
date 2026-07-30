@@ -173,8 +173,10 @@ After about a minute you should see something like:
 
 ```
 1/2  Asking for a repair guide (uses your Anthropic key)...
-     PASS - got 8 steps for "2014 Honda Civic"
-     first step: Park safely and loosen the wheel lugs
+     PASS - got 8 steps
+     understood: 2014 Honda Civic - Replace the front brake pads
+     assumed: Squealing and grinding on braking points to worn front pads.
+     first step: Park safely and break the lug nuts loose
 
 2/2  Finding video clips for those steps (uses your YouTube key)...
      searched 5 videos
@@ -307,14 +309,28 @@ That warning is normal. It appears for every app not from the Play Store.
 
 ## Using it
 
-1. Type the year, make, and model of your car
-2. Describe the job in plain words — "replace front brake pads", "change the
-   serpentine belt", "replace the cabin air filter"
-3. Tap **Build my repair guide**
-4. Wait 30–60 seconds
-5. Read the overview page (tools and safety), then tap **Start**
-6. Each step shows the written instructions and plays the exact part of a repair
-   video where that step happens. Tap **Next** to move on.
+There is one box. Type whatever you want into it:
+
+- `2014 Honda Civic, replace the front brake pads`
+- `my civic squeals and grinds when I brake`
+- `2011 F-150 5.0, need to change the spark plugs`
+
+You don't have to name the repair. Describe the symptom and the AI works out what
+needs doing.
+
+1. Type your message (or tap one of the examples)
+2. Tap **Build my repair guide**
+3. Wait 30–60 seconds
+4. Read the overview page — tools, safety, and **what the AI assumed**
+5. Tap **Start**, then **Next** through the steps
+
+**Check the green "What I assumed" box on the overview.** When you describe a symptom
+instead of a job, that box is where the AI tells you what it decided you need. If it
+guessed wrong, tap **New** and add the missing detail.
+
+If your message is too vague to act on — no vehicle named, or just "it makes a noise" —
+the app asks you one question and keeps what you already typed, so you only add the
+missing bit.
 
 If a step has no video, it says so and shows the written instructions. That is
 expected and not a bug — see the note below.
@@ -418,6 +434,11 @@ different key — if so, uninstall the old app first.
 **Guides take longer than 60 seconds and then fail**
 Vercel's free plan caps a request at 60 seconds. Try a narrower description ("replace
 front brake pads" rather than "full brake job including lines and master cylinder").
+
+**The app keeps asking me a question instead of writing a guide**
+It does that when it cannot tell what vehicle you have, or the problem is too vague to
+act on safely. Add the year, make and model, and say what the car is actually doing —
+what noise, when, and from which end.
 
 ---
 

@@ -5,44 +5,23 @@ import {
   TextInput,
   StyleSheet,
   ScrollView,
+  Pressable,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import BigButton from '../components/BigButton';
 import { colors, fonts, radius, spacing } from '../theme';
 
-function Field({ label, placeholder, value, onChangeText, keyboardType, multiline, autoFocus }) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={[styles.input, multiline && styles.inputMultiline]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        multiline={multiline}
-        autoFocus={autoFocus}
-        autoCapitalize="words"
-        autoCorrect={false}
-        returnKeyType="next"
-      />
-    </View>
-  );
-}
+// Tapping one of these fills the box, so the first run needs no typing at all.
+const EXAMPLES = [
+  '2014 Honda Civic — front brakes squeal and grind when I stop',
+  '2011 F-150 5.0, need to change the spark plugs',
+  'My Corolla is overdue for an oil change',
+];
 
-export default function SetupScreen({ onStart, error }) {
-  const [year, setYear] = useState('');
-  const [make, setMake] = useState('');
-  const [model, setModel] = useState('');
-  const [repair, setRepair] = useState('');
-
-  const ready =
-    year.trim().length >= 2 &&
-    make.trim().length > 0 &&
-    model.trim().length > 0 &&
-    repair.trim().length > 2;
+export default function SetupScreen({ onStart, error, question, initialText = '' }) {
+  const [text, setText] = useState(initialText);
+  const ready = text.trim().length > 3;
 
   return (
     <KeyboardAvoidingView
@@ -56,47 +35,60 @@ export default function SetupScreen({ onStart, error }) {
       >
         <Text style={styles.heading}>AI Mechanic</Text>
         <Text style={styles.sub}>
-          Tell me your vehicle and the job. I will write the steps and find the exact
-          moment in a repair video for each one.
+          Tell me what you're driving and what's wrong. Plain words are fine — I'll work
+          out the rest and find the video clips for each step.
         </Text>
 
-        {!!error && (
+        {/* A follow-up question from the AI takes priority over an error, because
+            it means the request worked and just needs one more detail. */}
+        {!!question && (
+          <View style={styles.askBox}>
+            <Text style={styles.askLabel}>One more thing</Text>
+            <Text style={styles.askText}>{question}</Text>
+          </View>
+        )}
+
+        {!question && !!error && (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
 
-        <Field
-          label="Year"
-          placeholder="2014"
-          value={year}
-          onChangeText={setYear}
-          keyboardType="number-pad"
-          autoFocus
-        />
-        <Field label="Make" placeholder="Honda" value={make} onChangeText={setMake} />
-        <Field label="Model" placeholder="Civic" value={model} onChangeText={setModel} />
-        <Field
-          label="What do you need to do?"
-          placeholder="Replace the front brake pads"
-          value={repair}
-          onChangeText={setRepair}
+        <TextInput
+          style={styles.input}
+          placeholder={'e.g. 2014 Honda Civic, front brakes are grinding'}
+          placeholderTextColor={colors.textMuted}
+          value={text}
+          onChangeText={setText}
           multiline
+          autoFocus
+          autoCapitalize="sentences"
+          autoCorrect
+          textAlignVertical="top"
         />
 
         <BigButton
           label="Build my repair guide"
-          onPress={() =>
-            onStart({
-              year: year.trim(),
-              make: make.trim(),
-              model: model.trim(),
-              repair: repair.trim(),
-            })
-          }
+          onPress={() => onStart(text.trim())}
           disabled={!ready}
           style={styles.submit}
         />
+
+        {!text && (
+          <View style={styles.examples}>
+            <Text style={styles.examplesLabel}>Or tap an example</Text>
+            {EXAMPLES.map((example) => (
+              <Pressable
+                key={example}
+                onPress={() => setText(example)}
+                style={({ pressed }) => [styles.example, pressed && styles.examplePressed]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.exampleText}>{example}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         <Text style={styles.footnote}>
           Always use jack stands. Never work under a vehicle held up by a jack alone.
@@ -122,13 +114,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.lg,
   },
-  field: { marginBottom: spacing.md },
-  label: {
-    color: colors.text,
-    fontSize: fonts.label,
-    fontWeight: '800',
-    marginBottom: spacing.xs,
-  },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 2,
@@ -136,12 +121,56 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     color: colors.text,
     fontSize: fonts.body,
+    lineHeight: 28,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 62,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    minHeight: 150,
+    marginBottom: spacing.md,
   },
-  inputMultiline: { minHeight: 110, textAlignVertical: 'top', paddingTop: spacing.sm },
-  submit: { marginTop: spacing.sm },
+  submit: { marginBottom: spacing.lg },
+
+  examples: { marginBottom: spacing.sm },
+  examplesLabel: {
+    color: colors.textMuted,
+    fontSize: fonts.small,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
+  example: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  examplePressed: { backgroundColor: colors.surfaceRaised },
+  exampleText: { color: colors.textMuted, fontSize: fonts.label, lineHeight: 24 },
+
+  askBox: {
+    backgroundColor: '#123026',
+    borderColor: colors.success,
+    borderWidth: 2,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  askLabel: {
+    color: colors.success,
+    fontSize: fonts.small,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
+  },
+  askText: { color: colors.text, fontSize: fonts.label, lineHeight: 26 },
+
   errorBox: {
     backgroundColor: '#3A1D1D',
     borderColor: colors.danger,
@@ -151,6 +180,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   errorText: { color: '#FFD9D9', fontSize: fonts.small, lineHeight: 22 },
+
   footnote: {
     color: colors.textMuted,
     fontSize: fonts.small,

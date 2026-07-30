@@ -14,7 +14,8 @@ if (!base) {
   process.exit(1);
 }
 
-const VEHICLE = { year: '2014', make: 'Honda', model: 'Civic', repair: 'replace front brake pads' };
+// One free-text message, exactly like the app now sends.
+const REQUEST = '2014 Honda Civic, the front brakes squeal and grind when I stop';
 
 /** Thrown when we could not talk to the server at all, as opposed to the
  *  server answering with an error. The two need different advice. */
@@ -61,8 +62,16 @@ console.log(`\nTesting ${base}\n`);
 console.log('1/2  Asking for a repair guide (uses your Anthropic key)...');
 let guide;
 try {
-  guide = await post('/api/guide', VEHICLE);
-  console.log(`     PASS - got ${guide.steps.length} steps for "${guide.vehicle}"`);
+  guide = await post('/api/guide', { request: REQUEST });
+  if (guide.needMoreInfo) {
+    console.error(`     UNEXPECTED - the AI asked a follow-up: "${guide.question}"`);
+    console.error('     That is valid behaviour, but this test sends a complete request,');
+    console.error('     so it should not happen. Check the guide prompt.');
+    process.exit(1);
+  }
+  console.log(`     PASS - got ${guide.steps.length} steps`);
+  console.log(`     understood: ${guide.vehicle} - ${guide.repair}`);
+  if (guide.assumption) console.log(`     assumed: ${guide.assumption}`);
   console.log(`     first step: ${guide.steps[0].title}`);
 } catch (err) {
   explain(err, 'ANTHROPIC_API_KEY is missing, invalid, or has no credit.');

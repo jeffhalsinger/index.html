@@ -60,9 +60,16 @@ async function post(path, body, { timeoutMs = 120000 } = {}) {
   return data;
 }
 
-/** Step 1: turn a vehicle + a job into a written guide. */
-export function fetchGuide({ year, make, model, repair }) {
-  return post('/api/guide', { year, make, model, repair });
+/**
+ * Step 1: turn whatever the person typed into a written guide.
+ *
+ * Two possible shapes come back:
+ *   - a full guide, or
+ *   - { needMoreInfo: true, question } when the request was too vague to act on.
+ * The caller has to check for the second one.
+ */
+export function fetchGuide(request) {
+  return post('/api/guide', { request });
 }
 
 /**

@@ -12,6 +12,8 @@ function AppBody() {
   const [screen, setScreen] = useState('setup'); // 'setup' | 'loading' | 'guide'
   const [phase, setPhase] = useState('guide'); // which half of the loading is running
   const [error, setError] = useState('');
+  const [question, setQuestion] = useState(''); // a follow-up asked by the AI
+  const [lastRequest, setLastRequest] = useState(''); // so their text survives a retry
 
   const [guide, setGuide] = useState(null);
   const [matches, setMatches] = useState([]);
@@ -25,6 +27,8 @@ function AppBody() {
     setVideoNotice('');
     setPageIndex(0);
     setError('');
+    setQuestion('');
+    setLastRequest('');
   }, []);
 
   // Android's hardware back button should step back through the guide rather
@@ -46,17 +50,27 @@ function AppBody() {
     return () => sub.remove();
   }, [screen, pageIndex, restart]);
 
-  const start = useCallback(async ({ year, make, model, repair }) => {
+  const start = useCallback(async (request) => {
     setError('');
+    setQuestion('');
+    setLastRequest(request);
     setScreen('loading');
     setPhase('guide');
 
     let builtGuide;
     try {
-      builtGuide = await fetchGuide({ year, make, model, repair });
+      builtGuide = await fetchGuide(request);
     } catch (err) {
       // Without a guide there is nothing to show, so go back and explain why.
       setError(err.message || 'Could not build the repair guide.');
+      setScreen('setup');
+      return;
+    }
+
+    // The AI needs one more detail before it can write anything useful. Send
+    // them back to the box with the question, keeping what they already typed.
+    if (builtGuide?.needMoreInfo) {
+      setQuestion(builtGuide.question || 'Which vehicle is this — year, make and model?');
       setScreen('setup');
       return;
     }
@@ -108,7 +122,14 @@ function AppBody() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <StatusBar style="light" />
-      {screen === 'setup' && <SetupScreen onStart={start} error={error} />}
+      {screen === 'setup' && (
+        <SetupScreen
+          onStart={start}
+          error={error}
+          question={question}
+          initialText={lastRequest}
+        />
+      )}
       {screen === 'loading' && <LoadingScreen phase={phase} />}
       {screen === 'guide' && guide && (
         <GuideScreen

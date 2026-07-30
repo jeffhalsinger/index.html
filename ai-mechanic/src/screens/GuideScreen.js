@@ -114,6 +114,18 @@ function Overview({ guide, videoNotice }) {
         <Fact label="Steps" value={String(guide.steps.length)} />
       </View>
 
+      {/* With free-text input the AI has to infer things. Show what it assumed
+          so a wrong guess is caught here, not halfway through the job. */}
+      {!!guide.assumption && (
+        <View style={styles.assumeBox}>
+          <Text style={styles.assumeLabel}>What I assumed</Text>
+          <Text style={styles.assumeText}>{guide.assumption}</Text>
+          <Text style={styles.assumeHint}>
+            Not right? Tap New at the top and add the detail.
+          </Text>
+        </View>
+      )}
+
       {!!videoNotice && (
         <View style={styles.noticeBox}>
           <Text style={styles.noticeText}>{videoNotice}</Text>
@@ -210,6 +222,29 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   cautionText: { color: '#FFF0CC', fontSize: fonts.label, lineHeight: 26 },
+
+  assumeBox: {
+    backgroundColor: '#123026',
+    borderLeftWidth: 6,
+    borderLeftColor: colors.success,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  assumeLabel: {
+    color: colors.success,
+    fontSize: fonts.small,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
+  },
+  assumeText: { color: colors.text, fontSize: fonts.label, lineHeight: 26 },
+  assumeHint: {
+    color: colors.textMuted,
+    fontSize: fonts.small,
+    marginTop: spacing.xs,
+  },
 
   noticeBox: {
     backgroundColor: colors.surface,
